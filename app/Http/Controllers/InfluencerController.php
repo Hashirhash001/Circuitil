@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Chat;
+use App\Models\User;
 use App\Models\Brand;
 use App\Models\Influencer;
 use Illuminate\Http\Request;
+use App\Models\ChatParticipant;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -42,16 +45,42 @@ class InfluencerController extends Controller
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
+        $user = Auth::user(); // Get the logged-in user
+
+        // Fetch the influencer profile
         $influencer = Influencer::where('id', $influencerId)->first();
 
         if (!$influencer) {
             return response()->json(['error' => 'Influencer not found'], 404);
         }
 
+        // Check if there's an existing chat between the logged-in user and the influencer
+        $chat = Chat::whereHas('participants', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->whereHas('participants', function ($query) use ($influencer) {
+                $query->where('user_id', $influencer->user_id); // Assuming 'user_id' is the foreign key in the influencer table
+            })
+            ->first();
+
+        // If no chat exists, create a new one
+        if (!$chat) {
+            // Create a new chat
+            $chat = Chat::create(['created_by' => $user->id]);
+
+            // Add both the authenticated user and the influencer as participants
+            ChatParticipant::create(['chat_id' => $chat->id, 'user_id' => $user->id]);
+            ChatParticipant::create(['chat_id' => $chat->id, 'user_id' => $influencer->user_id]);
+        }
+
+        // Return the chat ID in the response, whether it existed or was newly created
+        $chatId = $chat->id;
+
         return response()->json([
             'success' => true,
             'message' => 'Influencer details fetched successfully',
             'influencer' => $influencer,
+            'chat_id' => $chatId, // Include the chat_id in the response
         ]);
     }
 
@@ -62,7 +91,8 @@ class InfluencerController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'category' => 'required|string|max:255',
+            'category' => 'required|array|max:4',
+            'category.*' => 'required|string|max:255',
             'about' => 'nullable|string',
             'profile_photo' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
             'social_media_links' => 'nullable|json',
@@ -103,8 +133,14 @@ class InfluencerController extends Controller
             $data = $validator->validated();
         }
 
+        // Store categories as an array in the 'categories' field
+        $data['category'] = json_encode($data['category']);
+
         // Update influencer details
         $influencer->update($data);
+
+        // Set the 'profile_updated' field to true
+        User::where('id', $user->id)->update(['profile_updated' => true]);
 
         return response()->json([
             'success' => true,

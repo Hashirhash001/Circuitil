@@ -16,7 +16,7 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id')->comment('users: id');
             $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
             $table->string('name')->nullable();
-            $table->string('category')->nullable();
+            $table->json('category')->nullable();
             $table->string('about')->nullable();
             $table->string('profile_photo')->nullable();
             $table->json('social_media_links')->nullable();

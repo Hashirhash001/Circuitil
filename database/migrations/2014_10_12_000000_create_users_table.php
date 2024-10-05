@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('password');
             $table->enum('role', ['influencer', 'brand'])->default('influencer')->comment('influencer, brand');
             $table->string('dob')->nullable();
+            $table->boolean('profile_updated')->default(false);
             $table->rememberToken();
             $table->softDeletes();
             $table->timestamps();

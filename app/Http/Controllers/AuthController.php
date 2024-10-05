@@ -56,6 +56,8 @@ class AuthController extends Controller
             'message' => 'User created successfully',
             'access_token' => $token,
             'token_type' => 'Bearer',
+            'role' => $user->role,
+            'profile_updated' => $user->profile_updated,
         ]);
     }
 
@@ -84,6 +86,7 @@ class AuthController extends Controller
             'access_token' => $token,
             'token_type' => 'Bearer',
             'role' => $user->role,
+            'profile_updated' => $user->profile_updated,
         ]);
     }
 
@@ -94,7 +97,7 @@ class AuthController extends Controller
         }
 
         $user = Auth::user();
-        $user->tokens()->delete();
+        $user->currentAccessToken()->delete();
 
         return response()->json(['message' => 'Logged out successfully']);
     }

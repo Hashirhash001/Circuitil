@@ -47,6 +47,7 @@ class PostController extends Controller
         ]);
     }
 
+    // Get posts by user
     public function getPostsByUser($user_id)
     {
         if (!Auth::check()) {
@@ -68,8 +69,16 @@ class PostController extends Controller
         }
 
         // Add a flag to each post to indicate if the authenticated user has liked it
+        // and include the total likes count
         $posts = $posts->map(function ($post) use ($authUser) {
-            $post->has_liked = $post->likes->contains('user_id', $authUser->id); // Check if auth user liked the post
+            // Check if the authenticated user has liked the post and the like has a status of 1
+            $post->has_liked = $post->likes->contains(function ($like) use ($authUser) {
+                return $like->user_id == $authUser->id && $like->status == 1;
+            });
+
+            // Get the total likes count for the post where the status is 1
+            $post->total_likes = $post->likes_count;
+
             return $post;
         });
 
@@ -79,6 +88,7 @@ class PostController extends Controller
         ]);
     }
 
+    // Like a post
     public function likePost($postId)
     {
         if (!Auth::check()) {
@@ -102,6 +112,9 @@ class PostController extends Controller
                 // If already liked, change status to 0 (unlike)
                 $existingLike->update(['status' => 0]);
 
+                // Decrease the likes count in the posts table
+                $post->decrement('likes_count');
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Post unliked successfully',
@@ -109,6 +122,9 @@ class PostController extends Controller
             } else {
                 // If already unliked, change status back to 1 (re-like)
                 $existingLike->update(['status' => 1]);
+
+                // Increase the likes count in the posts table
+                $post->increment('likes_count');
 
                 return response()->json([
                     'success' => true,
@@ -123,6 +139,9 @@ class PostController extends Controller
                 'status' => 1,
             ]);
 
+            // Increase the likes count in the posts table
+            $post->increment('likes_count');
+
             return response()->json([
                 'success' => true,
                 'message' => 'Post liked successfully',
@@ -130,6 +149,7 @@ class PostController extends Controller
         }
     }
 
+    // Get likes for a post
     public function getLikes($postId)
     {
         $post = Post::find($postId);

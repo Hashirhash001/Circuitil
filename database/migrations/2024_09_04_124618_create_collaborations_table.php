@@ -22,6 +22,13 @@ return new class extends Migration
             $table->double('amount', 10, 2)->nullable();
             $table->string('end_date')->nullable();
 
+            // Add these new columns
+            $table->tinyInteger('status')->default(1)->comment('1 = pending, 4 = accepted, 5 = completed');
+            $table->unsignedBigInteger('accepted_user_id')->nullable()->comment('Accepted influencer: users:id');
+
+            // Foreign key for accepted influencer
+            $table->foreign('accepted_user_id')->references('id')->on('users')->nullOnDelete();
+
             $table->softDeletes();
             $table->timestamps();
         });

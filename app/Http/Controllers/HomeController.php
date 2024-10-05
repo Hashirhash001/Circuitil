@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Influencer;
 use Illuminate\Http\Request;
 use App\Models\Collaboration;
@@ -139,7 +140,6 @@ class HomeController extends Controller
         ]);
     }
 
-
     // Get all brands by category
     public function getBrandsByCategory(Request $request)
     {
@@ -164,7 +164,9 @@ class HomeController extends Controller
         $category = $validator->validated()['category'];
 
         // Fetch brands that match the provided category
-        $brands = Brand::where('category', $category)->get();
+        $brands = Brand::where('category', $category)
+                ->whereNotNull('profile_photo')
+                ->get();
 
         if ($brands->isEmpty()) {
             return response()->json([
@@ -196,22 +198,130 @@ class HomeController extends Controller
             ], 403);
         }
 
-        // Get the influencer's category
-        $category = $authUser->influencer->category;
+        // Get the influencer's categories (assuming it's stored as JSON)
+        $categories = json_decode($authUser->influencer->category);
 
-        // Fetch collaborations where the category matches the influencer's category
-        $collaborations = Collaboration::where('category', $category)->get();
+        // Ensure categories are provided and properly parsed
+        if (!$categories || !is_array($categories)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid categories found for this influencer.',
+            ], 422);
+        }
+
+        // Fetch collaborations where the category matches any of the influencer's categories
+        $collaborations = Collaboration::where(function ($query) use ($categories) {
+            foreach ($categories as $categoryId) {
+                $query->orWhereRaw('JSON_CONTAINS(category, ?)', [json_encode($categoryId)]);
+            }
+        })->get();
 
         if ($collaborations->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No collaborations found for this category.',
+                'message' => 'No collaborations found for these categories.',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
             'collaborations' => $collaborations,
+        ]);
+    }
+
+    public function getTopBrands()
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        // Get the top brands based on the number of collaborations
+        $topBrands = Brand::withCount('collaborations') // Count the number of collaborations
+            ->orderByDesc('collaborations_count') // Sort brands by the number of collaborations
+            ->limit(10) // Limit the number of top brands to 10
+            ->get()
+            ->map(function ($brand) {
+                return [
+                    'id' => $brand->id,
+                    'name' => $brand->name,
+                    'profile_photo' => $brand->profile_photo,
+                    'collaborations_count' => $brand->collaborations_count,
+                ];
+            });
+
+        if ($topBrands->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No top brands found.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'top_brands' => $topBrands,
+        ]);
+    }
+
+    // Get all categories
+    public function categories()
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        // Fetch all categories
+        $categories = Category::all();
+
+        // Return the categories as a JSON response
+        return response()->json([
+            'success' => true,
+            'categories' => $categories
+        ]);
+    }
+
+    // Get all brands
+    public function AllBrands()
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        // Fetch all brands
+        $brands = Brand::whereNotNull('profile_photo')->take(20)->get();
+
+        if ($brands->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No brands found.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'brands' => $brands
+        ]);
+    }
+
+    // Get all influencers
+    public function AllInfluencers()
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        // Fetch all brands
+        $influencers = Influencer::whereNotNull('profile_photo')->take(20)->get();
+
+        if ($influencers->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No influencers found.',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'influencers' => $influencers
         ]);
     }
 

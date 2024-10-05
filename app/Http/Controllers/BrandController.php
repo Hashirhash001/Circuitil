@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Chat;
+use App\Models\User;
 use App\Models\Brand;
 use Illuminate\Http\Request;
+use App\Models\ChatParticipant;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -42,17 +45,42 @@ class BrandController extends Controller
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
-        // Find the brand associated with the user
+        $user = Auth::user(); // Get the logged-in user
+
+        // Fetch the brand profile
         $brand = Brand::where('id', $brandId)->first();
 
         if (!$brand) {
-            return response()->json(['error' => 'brand not found'], 404);
+            return response()->json(['error' => 'Brand not found'], 404);
         }
+
+        // Check if there's an existing chat between the logged-in user and the brand's user
+        $chat = Chat::whereHas('participants', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+            ->whereHas('participants', function ($query) use ($brand) {
+                $query->where('user_id', $brand->user_id); // Assuming 'user_id' is the foreign key in the brand table
+            })
+            ->first();
+
+        // If no chat exists, create a new one
+        if (!$chat) {
+            // Create a new chat
+            $chat = Chat::create(['created_by' => $user->id]);
+
+            // Add both the authenticated user and the brand's user as participants
+            ChatParticipant::create(['chat_id' => $chat->id, 'user_id' => $user->id]);
+            ChatParticipant::create(['chat_id' => $chat->id, 'user_id' => $brand->user_id]);
+        }
+
+        // Return the chat ID in the response, whether it existed or was newly created
+        $chatId = $chat->id;
 
         return response()->json([
             'success' => true,
-            'message' => 'brand details fetched successfully',
+            'message' => 'Brand details fetched successfully',
             'brand' => $brand,
+            'chat_id' => $chatId, // Include the chat_id in the response
         ]);
     }
 
@@ -62,8 +90,9 @@ class BrandController extends Controller
     public function update(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'category' => 'required|string|max:255',
+            'name' => 'nullable|string|max:255',
+            'category' => 'required|array|max:4',
+            'category.*' => 'required|integer|exists:categories,id',
             'about' => 'nullable|string',
             'profile_photo' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
             'social_media_links' => 'nullable|json',
@@ -103,8 +132,14 @@ class BrandController extends Controller
             $data = $validator->validated();
         }
 
+        // Store categories as an array in the 'categories' field
+        $data['category'] = json_encode(array_unique($data['category']));
+
         // Update brand details
         $brand->update($data);
+
+        // Set the 'profile_updated' field to true
+        User::where('id', $user->id)->update(['profile_updated' => true]);
 
         return response()->json([
             'success' => true,
@@ -116,7 +151,7 @@ class BrandController extends Controller
     /**
      * Fetch all collaborations for a brand.
      */
-    public function getCollaborations($brandId)
+    public function getCollaborations()
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Unauthenticated'], 401);
@@ -124,47 +159,59 @@ class BrandController extends Controller
 
         $user = Auth::user();
 
-        // Find the brand by ID
-        $brand = Brand::find($brandId);
+        // Check if the user has the 'brand' role
+        if ($user->role !== 'brand') {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
 
-        // Check if the brand exists
+        // Find the brand associated with the authenticated user
+        $brand = Brand::where('user_id', $user->id)->first();
+
+        // Check if the authenticated user is a brand owner
         if (!$brand) {
-            return response()->json(['error' => 'Brand not found'], 404);
+            return response()->json(['error' => 'Unauthorized: User is not a brand'], 403);
         }
 
-        // Check if the authenticated user is the owner of the brand
-        if ($brand->user_id !== $user->id) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
+        // Fetch all collaborations for the brand
+        $collaborations = $brand->collaborations;
 
-        // Fetch all collaborations for the brand, eager load the collaboration requests where status is 'accepted'
-        $collaborations = $brand->collaborations()->with(['collaborationRequests' => function ($query) {
-            $query->where('status', '3'); // Assuming 'accepted' is the status for accepted requests
-        }, 'collaborationRequests.influencer'])->get(); // Eager load the influencer details for accepted requests
-
-        // Add a flag to indicate if each collaboration has ended and include influencer details for accepted requests
-        $collaborationsWithDetails = $collaborations->map(function ($collaboration) {
+        // Map through each collaboration to add the flag and accepted influencer's details
+        $collaborationsWithStatus = $collaborations->map(function ($collaboration) {
             $currentDate = now(); // Get the current date and time
             $endDate = $collaboration->end_date;
 
             // Determine if the end_date has passed
             $hasEnded = $endDate && $currentDate->greaterThanOrEqualTo($endDate);
 
-            // Check if there are any accepted collaboration requests and fetch the first accepted influencer details
-            $acceptedRequest = $collaboration->collaborationRequests->first(); // Get the first accepted request (if exists)
-            $influencerDetails = $acceptedRequest ? $acceptedRequest->influencer->toArray() : null;
+            // Get the accepted collaboration request
+            $acceptedRequest = $collaboration->collaborationRequests()
+                ->where('status', 3) // Assuming '3' means accepted
+                ->with('influencer') // Eager load the influencer relationship
+                ->first();
 
-            // Return all attributes including the 'has_ended' flag and influencer details (if accepted)
+            // Set the influencer details if there is an accepted request
+            $influencer = $acceptedRequest ? $acceptedRequest->influencer : null;
+            $hasAcceptedInfluencer = $acceptedRequest !== null;
+
+            // Return all attributes including the 'has_ended' flag and accepted influencer
             return $collaboration->toArray() + [
                 'has_ended' => $hasEnded,
-                'influencer' => $influencerDetails
+                'has_accepted_influencer' => $hasAcceptedInfluencer,
+                'influencer' => $influencer ? [
+                    'id' => $influencer->id,
+                    'name' => $influencer->name,
+                    'category' => $influencer->category,
+                    'about' => $influencer->about,
+                    'profile_photo' => $influencer->profile_photo,
+                    'collab_value' => $influencer->collab_value,
+                    'social_media_links' => json_decode($influencer->social_media_links)
+                ] : null
             ];
         });
 
         return response()->json([
             'success' => true,
-            'collaborations' => $collaborationsWithDetails
+            'collaborations' => $collaborationsWithStatus
         ]);
     }
-
 }

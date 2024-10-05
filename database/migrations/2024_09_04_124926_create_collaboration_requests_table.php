@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreign('collaboration_id')->references('id')->on('collaborations')->cascadeOnDelete();
             $table->unsignedBigInteger('influencer_id')->comment('influencers: id');
             $table->foreign('influencer_id')->references('id')->on('influencers')->cascadeOnDelete();
-            $table->tinyInteger('status')->nullable()->comment('1 = pending, 2 = intrested, 3 = accepted, 4 = completed, 5 = rejected');
+            $table->tinyInteger('status')->nullable()->comment('1 = pending, 2 = interested, 3 = invited, 4 = accepted, 5 = completed, 6 = rejected');
 
             $table->softDeletes();
             $table->timestamps();
