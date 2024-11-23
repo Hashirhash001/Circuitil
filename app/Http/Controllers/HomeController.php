@@ -209,12 +209,21 @@ class HomeController extends Controller
             ], 422);
         }
 
-        // Fetch collaborations where the category matches any of the influencer's categories
+        // Fetch collaborations where the category matches and the collaboration has not ended
         $collaborations = Collaboration::where(function ($query) use ($categories) {
             foreach ($categories as $categoryId) {
                 $query->orWhereRaw('JSON_CONTAINS(category, ?)', [json_encode($categoryId)]);
             }
-        })->get();
+        })
+        ->where(function ($query) {
+            $query->whereNull('end_date') // Collaborations with no end date are considered active
+                  ->orWhere(function ($query) {
+                      // Check if the end_date is in 'd-m-Y' format and still active
+                      $query->whereNotNull('end_date')
+                            ->whereRaw("STR_TO_DATE(end_date, '%d-%m-%Y') >= ?", [now()]);
+                  });
+        })
+        ->get();
 
         if ($collaborations->isEmpty()) {
             return response()->json([
@@ -228,6 +237,7 @@ class HomeController extends Controller
             'collaborations' => $collaborations,
         ]);
     }
+
 
     public function getTopBrands()
     {

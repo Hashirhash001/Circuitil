@@ -389,34 +389,34 @@ class CollaborationController extends Controller
         $collaborationRequest->update($data);
 
         // Initiate a chat if accepted
-        // if ($data['status'] == 3) {
-        //     // Check if a chat already exists between the brand and influencer
-        //     $influencerId = $collaborationRequest->influencer->user_id; // Assuming this exists in your relation
-        //     $existingChat = Chat::whereHas('participants', function ($query) use ($brand, $influencerId) {
-        //         $query->where('user_id', $brand->user_id)
-        //             ->orWhere('user_id', $influencerId);
-        //     })
-        //     ->has('participants', 2) // Ensures both participants (brand and influencer) exist in the chat
-        //     ->first();
+        if ($data['status'] == 4) {
+            // Check if a chat already exists between the brand and influencer
+            $influencerId = $collaborationRequest->influencer->user_id; // Assuming this exists in your relation
+            $existingChat = Chat::whereHas('participants', function ($query) use ($brand, $influencerId) {
+                $query->where('user_id', $brand->user_id)
+                    ->orWhere('user_id', $influencerId);
+            })
+            ->has('participants', 2) // Ensures both participants (brand and influencer) exist in the chat
+            ->first();
 
-        //     if (!$existingChat) {
-        //         // Create a new chat
-        //         $chat = Chat::create([
-        //             'created_by' => $user->id,
-        //         ]);
+            if (!$existingChat) {
+                // Create a new chat
+                $chat = Chat::create([
+                    'created_by' => $user->id,
+                ]);
 
-        //         // Add brand and influencer as participants
-        //         ChatParticipant::create([
-        //             'chat_id' => $chat->id,
-        //             'user_id' => $brand->user_id, // Brand
-        //         ]);
+                // Add brand and influencer as participants
+                ChatParticipant::create([
+                    'chat_id' => $chat->id,
+                    'user_id' => $brand->user_id, // Brand
+                ]);
 
-        //         ChatParticipant::create([
-        //             'chat_id' => $chat->id,
-        //             'user_id' => $influencerId, // Influencer
-        //         ]);
-        //     }
-        // }
+                ChatParticipant::create([
+                    'chat_id' => $chat->id,
+                    'user_id' => $influencerId, // Influencer
+                ]);
+            }
+        }
 
         // Return a response based on the new status
         $message = $data['status'] == 4 ? 'Collaboration request accepted.' : 'Collaboration request rejected.';

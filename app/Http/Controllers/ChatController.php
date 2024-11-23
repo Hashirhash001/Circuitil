@@ -18,61 +18,64 @@ use Illuminate\Support\Facades\Validator;
 class ChatController extends Controller
 {
     // send a message in a chat
-    // public function sendMessage(Request $request, $chatId, $messageId = null)
-    // {
-    //     // Check if the user is authenticated
-    //     if (!Auth::check()) {
-    //         return response()->json(['success' => false, 'error' => 'Unauthenticated'], 401);
-    //     }
+    public function sendMessage(Request $request, $chatId, $messageId = null)
+    {
+        // Check if the user is authenticated
+        if (!Auth::check()) {
+            return response()->json(['success' => false, 'error' => 'Unauthenticated'], 401);
+        }
 
-    //     $user = Auth::user();
+        $user = Auth::user();
 
-    //     // Validate the request
-    //     $validator = Validator::make($request->all(), [
-    //         'message' => 'required|string|max:500',
-    //         'attachment_url' => 'nullable|url|max:255', // Optional attachment (URL)
-    //     ]);
+        // Validate the request
+        $validator = Validator::make($request->all(), [
+            'message' => 'required|string|max:500',
+            'attachment_url' => 'nullable|url|max:255', // Optional attachment (URL)
+        ]);
 
-    //     if ($validator->fails()) {
-    //         return response()->json(['success' => false, 'error' => $validator->errors()], 422);
-    //     }
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'error' => $validator->errors()], 422);
+        }
 
-    //     $data = $validator->validated();
+        $data = $validator->validated();
 
-    //     // Ensure the user is a participant in the chat
-    //     $isParticipant = ChatParticipant::where('chat_id', $chatId)
-    //         ->where('user_id', $user->id)
-    //         ->exists();
+        // Ensure the user is a participant in the chat
+        $isParticipant = ChatParticipant::where('chat_id', $chatId)
+            ->where('user_id', $user->id)
+            ->exists();
 
-    //     if (!$isParticipant) {
-    //         return response()->json(['success' => false, 'error' => 'You are not a participant in this chat'], 403);
-    //     }
+        if (!$isParticipant) {
+            return response()->json(['success' => false, 'error' => 'You are not a participant in this chat'], 403);
+        }
 
-    //     // Check if the message is a reply to another message
-    //     $replyToMessageId = null;
-    //     if ($messageId) {
-    //         // Check if the original message exists in the chat
-    //         $originalMessage = ChatMessage::where('id', $messageId)->where('chat_id', $chatId)->first();
+        // Check if the message is a reply to another message
+        $replyToMessageId = null;
+        if ($messageId) {
+            // Check if the original message exists in the chat
+            $originalMessage = ChatMessage::where('id', $messageId)->where('chat_id', $chatId)->first();
 
-    //         if (!$originalMessage) {
-    //             return response()->json(['success' => false, 'error' => 'Original message not found in this chat'], 404);
-    //         }
+            if (!$originalMessage) {
+                return response()->json(['success' => false, 'error' => 'Original message not found in this chat'], 404);
+            }
 
-    //         $replyToMessageId = $messageId; // Store the ID of the original message
-    //     }
+            $replyToMessageId = $messageId; // Store the ID of the original message
+        }
 
-    //     // Send the message (or reply)
-    //     $message = ChatMessage::create([
-    //         'chat_id' => $chatId,
-    //         'sender_id' => $user->id,
-    //         'message' => $data['message'],
-    //         'attachment_url' => $data['attachment_url'] ?? null,
-    //         'status' => 'sent',
-    //         'reply_to_message_id' => $replyToMessageId, // Reference the original message if it's a reply
-    //     ]);
+        // Encrypt the message before saving
+        $encryptedMessage = encrypt($data['message']);
 
-    //     return response()->json(['success' => true, 'message' => 'Message sent', 'data' => $message]);
-    // }
+        // Send the message (or reply)
+        $message = ChatMessage::create([
+            'chat_id' => $chatId,
+            'sender_id' => $user->id,
+            'message' => $encryptedMessage,
+            'attachment_url' => $data['attachment_url'] ?? null,
+            'status' => 'sent',
+            'reply_to_message_id' => $replyToMessageId, // Reference the original message if it's a reply
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Message sent', 'data' => $message]);
+    }
 
     public function sendMessageBetweenUsers(Request $request, $recipientId)
     {

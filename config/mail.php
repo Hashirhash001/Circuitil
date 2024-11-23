@@ -35,13 +35,22 @@ return [
 
     'mailers' => [
         'smtp' => [
+            // 'transport' => 'smtp',
+            // 'url' => env('MAIL_URL'),
+            // 'host' => 'sandbox.smtp.mailtrap.io',
+            // 'port' => env('MAIL_PORT', 587),
+            // 'encryption' => env('MAIL_ENCRYPTION', 'tls'),
+            // 'username' => '756b637a9d1479',
+            // 'password' => '70c3eb0c0686c0',
+            // 'timeout' => null,
+            // 'local_domain' => env('MAIL_EHLO_DOMAIN'),
+
             'transport' => 'smtp',
-            'url' => env('MAIL_URL'),
-            'host' => env('MAIL_HOST', 'smtp.mailgun.org'),
-            'port' => env('MAIL_PORT', 587),
+            'host' => 'smtp.gmail.com',
+            'port' => 587,
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
-            'username' => env('MAIL_USERNAME'),
-            'password' => env('MAIL_PASSWORD'),
+            'username' => 'hashmvhashmuhammed007@gmail.com',
+            'password' => 'vmcildoegrzkwcdg',
             'timeout' => null,
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],

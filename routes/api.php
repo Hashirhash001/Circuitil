@@ -26,8 +26,15 @@ use App\Http\Controllers\CollaborationRequestController;
 */
 
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/register/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/register/resend-otp', [AuthController::class, 'resendOtp']);
 Route::post('/login', [AuthController::class, 'login']);
+
+Route::post('password/send-otp', [AuthController::class, 'sendOtpForResetPassword']);
+Route::post('password/verify-password-otp', [AuthController::class, 'verifyPasswordOtp']);
+Route::post('password/reset', [AuthController::class, 'resetPassword']);
+
+Route::post('auth/google/register', [GoogleController::class, 'googleLogin']);
 
 Route::get('/run-artisan-command', function () {
     Artisan::call('storage:link');
@@ -112,6 +119,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/collaborations/invite', [CollaborationRequestController::class, 'inviteInfluencerForCollaboration']);
     // complete a collaboration
     Route::post('/collaborations/{collaborationId}/complete', [CollaborationController::class, 'completeCollaboration']);
+    // mark an influencer as interested in a collaboration
+    Route::post('/collaborations/mark-interested', [CollaborationRequestController::class, 'markInterestedForCollaboration']);
 
     // Routes for influencers to view and update their collaboration requests
     Route::get('collaboration-requests', [CollaborationController::class, 'fetchCollaborationRequests']);
@@ -126,7 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Send a new message
         Route::post('/message/send/{recipientId}', [ChatController::class, 'sendMessageBetweenUsers']);
 
-        // Route::post('/{chatId}/message', [ChatController::class, 'sendMessage']);
+        Route::post('/{chatId}/message', [ChatController::class, 'sendMessage']);
 
         // Reply to a message
         Route::post('/{chatId}/message/{messageId}', [ChatController::class, 'sendMessage']);
