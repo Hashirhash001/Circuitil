@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Models\Brand;
+use App\Models\FcmToken;
 use App\Models\Influencer;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
@@ -21,7 +22,7 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
-        'name', 'email', 'password', 'role', 'dob', 'profile_updated', 'otp', 'otp_expires_at', 'google_id'
+        'name', 'email', 'password', 'role', 'dob', 'profile_updated', 'otp', 'otp_expires_at', 'google_id', 'email_verified_at'
     ];
 
     /**
@@ -52,6 +53,11 @@ class User extends Authenticatable
     public function brand()
     {
         return $this->hasOne(Brand::class);
+    }
+
+    public function fcmTokens()
+    {
+        return $this->hasMany(FcmToken::class);
     }
 
 }

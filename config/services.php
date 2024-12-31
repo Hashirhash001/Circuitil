@@ -43,4 +43,8 @@ return [
         'redirect' => env('GOOGLE_REDIRECT'),
     ],
 
+    'firebase' => [
+        'service_account' => env('GOOGLE_APPLICATION_CREDENTIALS'),
+    ],
+
 ];

@@ -10,15 +10,20 @@ use App\Models\Influencer;
 use Illuminate\Http\Request;
 use App\Models\Collaboration;
 use App\Models\ChatParticipant;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use App\Models\Notification;
 use App\Models\CollaborationRequest;
+use App\Services\NotificationService;
+use App\Services\PushNotificationService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
 class CollaborationController extends Controller
 {
     // Create a new collaboration
-    public function createCollaboration(Request $request)
+    public function createCollaboration(Request $request, NotificationService $notificationService, PushNotificationService $pushNotificationService)
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Unauthenticated'], 401);
@@ -44,7 +49,7 @@ class CollaborationController extends Controller
                     $fail('The end date must be a future date.');
                 }
             }],
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -89,11 +94,40 @@ class CollaborationController extends Controller
                     ->first();
 
                 if (!$existingRequest) {
-                    CollaborationRequest::create([
+                    $collaborationRequest = CollaborationRequest::create([
                         'collaboration_id' => $collaboration->id,
                         'influencer_id' => $influencer->id,
                         'status' => 1, // pending
                     ]);
+
+                    // Notify the influencer about the new collaboration
+                    $notificationService->createNotification(
+                        $influencer->user_id,
+                        'collaboration_suggestion',
+                        [
+                            'message' => "You may be interested in the collaboration '{$collaboration->name}', check it out.",
+                            'collaboration_id' => $collaboration->id,
+                            'brand_id' => $collaboration->brand->id,
+                            'collaboration_request_id' => $collaborationRequest->id,
+                            'collaboration_request_status' => $collaborationRequest->status,
+                            'collaboration_image' => $collaboration->image
+                        ]
+                    );
+
+                    // Prepare data for push notification
+                    $pushNotificationData = [
+                        'title' => "New Collaboration Opportunity",
+                        'body' => "You may be interested in the collaboration " . strtoupper($collaboration->name) . ".",
+                        'image' => $collaboration->image, // Assuming image is the collaboration image
+                        'data' => [
+                            'collaboration_id' => $collaboration->id,
+                            'collaboration_request_id' => $collaborationRequest->id,
+                            'message' => "You may be interested in the collaboration '{$collaboration->name}', check it out.",
+                        ]
+                    ];
+
+                    $fcmTokens = $influencer->user->fcmTokens->pluck('fcm_token')->toArray();
+                    $pushNotificationService->sendPushNotification($fcmTokens, $pushNotificationData);
                 }
             }
         }
@@ -122,11 +156,9 @@ class CollaborationController extends Controller
         }
 
         // Fetch collaboration requests for the influencer
-        $requests = CollaborationRequest::with('collaboration.brand') // Eager load brand relationship
+        $requests = CollaborationRequest::with('collaboration.brand.user') // Eager load brand relationship
             ->where('influencer_id', $influencer->id)
-            ->where('status', 1)
-            ->orWhere('status', 3)
-            ->orWhere('status', 4)
+            ->whereIn('status', [1, 3, 4])
             ->orderBy('created_at', 'desc')
             ->whereHas('collaboration', function ($query) {
                 $query->whereDate(DB::raw("STR_TO_DATE(end_date, '%d-%m-%Y')"), '>=', now());
@@ -143,6 +175,7 @@ class CollaborationController extends Controller
                     'updated_at' => $request->updated_at,
                     'collaboration' => [
                         'id' => $request->collaboration->id,
+                        'user_id' => $request->collaboration->brand->user->id,
                         'brand_id' => $request->collaboration->brand_id,
                         'brand_name' => $request->collaboration->brand->name,
                         'name' => $request->collaboration->name,
@@ -162,7 +195,7 @@ class CollaborationController extends Controller
     }
 
     // Update collaboration request status by influencer
-    public function updateCollaborationStatus(Request $request, $collaborationRequestId)
+    public function updateCollaborationStatus(Request $request, $collaborationRequestId, PushNotificationService $pushNotificationService)
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Unauthenticated'], 401);
@@ -176,7 +209,7 @@ class CollaborationController extends Controller
 
         // Validate request status
         $validator = Validator::make($request->all(), [
-            'status' => 'required|in:2,4', // 2 = interested, 4 = rejected
+            'status' => 'required|in:2,6', // 2 = interested, 6 = rejected
         ]);
 
         if ($validator->fails()) {
@@ -217,12 +250,68 @@ class CollaborationController extends Controller
         // Update the status of the collaboration request
         $updateSuccess = $collaborationRequest->update(['status' => $request->status]);
 
+        $notification = Notification::where('user_id', $user->id)
+        // ->where('type', 'collaboration_suggestion')
+        ->where('data', 'like', '%"collaboration_request_id":' . $collaborationRequestId . '%')
+        ->first();
+
+        if ($notification) {
+            // Decode existing notification data
+            $notificationData = json_decode($notification->data, true);
+
+            // Update the status field in the notification data
+            $notificationData['collaboration_request_status'] = $request->status;
+
+            // Save the updated notification data
+            $notification->update([
+                'data' => json_encode($notificationData),
+            ]);
+        }
+
         // Return response based on whether the update was successful
         if ($updateSuccess) {
             $statusMessages = [
                 2 => 'Collaboration request marked as interested.',
-                4 => 'Collaboration request marked as rejected.',
+                6 => 'Collaboration request marked as rejected.',
             ];
+
+            // Only send notification if the status is '2' (interested)
+            if ($request->status == 2) {
+                // Notify the brand (collaboration owner) about the status change
+                $notificationService = new NotificationService();
+
+                $notificationService->createNotification(
+                    $collaboration->brand->user_id, // The brand owner's user ID
+                    'collaboration_interest', // Notification type
+                    [
+                        'message' => "{$influencer->name} has expressed interest for your '{$collaboration->name}' collaboration.",
+                        'collaboration_id' => $collaboration->id,
+                        'collaboration_image' => $collaboration->image,
+                        'collaboration_request_id' => $collaborationRequest->id,
+                        'influencer_id' => $influencer->id,
+                        'brand_id' => $collaboration->brand->user_id,
+                        'status' => $request->status,
+                    ]
+                );
+
+                // Prepare push notification data
+                $pushNotificationData = [
+                    'title' => "Collaboration Interest",
+                    'body' => "{$influencer->name} has expressed interest in your collaboration '{$collaboration->name}'",
+                    'image' => $collaboration->image, // Assuming image is the collaboration image
+                    'data' => [
+                        'collaboration_id' => $collaboration->id,
+                        'collaboration_request_id' => $collaborationRequest->id,
+                        'influencer_id' => $influencer->id,
+                        'status' => $request->status,
+                        'message' => "{$influencer->name} has expressed interest for your '{$collaboration->name}' collaboration.",
+                    ]
+                ];
+
+                $fcmTokens = $collaboration->brand->user->fcmTokens->pluck('fcm_token')->toArray();
+                $pushNotificationService->sendPushNotification($fcmTokens, $pushNotificationData);
+
+            }
 
             return response()->json([
                 'success' => true,
@@ -235,7 +324,7 @@ class CollaborationController extends Controller
         return response()->json(['success' => true]);
     }
 
-    // Fetch interested influencers for a collaboration by a brand
+    // Fetch interested influencers for a collaboration
     public function fetchInterestedInfluencers($collaborationId)
     {
         if (!Auth::check()) {
@@ -258,7 +347,9 @@ class CollaborationController extends Controller
             ->where('collaboration_id', $collaborationId)
             ->where(function ($query) {
                 $query->where('status', 2)  // 2 = interested
-                    ->orWhere('status', 4); // 4 = accepted
+                      ->orWhere('status', 3) // 3 = invited
+                      ->orWhere('status', 4) // 4 = accepted
+                      ->orWhere('status', 5); // 5 = completed
             })
             ->orderBy('created_at', 'desc')
             ->get();
@@ -270,49 +361,8 @@ class CollaborationController extends Controller
         return response()->json(['success' => true, 'influencers' => $interestedInfluencers]);
     }
 
-    // Fetch interested influencers for all collaborations by a brand(brand notification)
-    public function fetchInterestedInfluencersForAllCollaborations()
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Unauthenticated'], 401);
-        }
-
-        $user = Auth::user();
-
-        if ($user->role !== 'brand') {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        // Fetch the brand information based on the authenticated user
-        $brand = Brand::where('user_id', $user->id)->first();
-
-        if (!$brand) {
-            return response()->json(['success' => false, 'message' => 'Brand not found']);
-        }
-
-        // Fetch all collaborations created by the brand
-        $collaborations = Collaboration::where('brand_id', $brand->id)->get();
-
-        if ($collaborations->isEmpty()) {
-            return response()->json(['success' => true, 'message' => 'No collaborations found']);
-        }
-
-        // Fetch interested influencers for all collaborations
-        $interestedInfluencers = CollaborationRequest::with('influencer', 'collaboration')
-            ->whereIn('collaboration_id', $collaborations->pluck('id')) // Get collaboration IDs
-            ->where('status', 2) // 2 = interested
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        if ($interestedInfluencers->isEmpty()) {
-            return response()->json(['success' => true, 'message' => 'No interested influencers found']);
-        }
-
-        return response()->json(['success' => true, 'interested_influencers' => $interestedInfluencers]);
-    }
-
     // Accept an influencer for a collaboration
-    public function acceptInfluencer(Request $request, $collaborationRequestId)
+    public function acceptInfluencer(Request $request, $collaborationRequestId, PushNotificationService $pushNotificationService)
     {
         if (!Auth::check()) {
             return response()->json(['success' => false, 'error' => 'Unauthenticated'], 401);
@@ -377,7 +427,7 @@ class CollaborationController extends Controller
         //     return response()->json(['success' => false, 'error' => 'This collaboration already has an accepted influencer.'], 400);
         // }
 
-        // Check if the influencer has shown interest or been invited (status = 2, 3)
+         // Check if the influencer has shown interest or been invited (status = 2, 3)
         if (!in_array($collaborationRequest->status, [2, 3])) {
             return response()->json([
                 'success' => false,
@@ -388,16 +438,37 @@ class CollaborationController extends Controller
         // Update the status of the collaboration request
         $collaborationRequest->update($data);
 
+        $notification = Notification::where('user_id', $brand->user_id)
+        // ->where('type', 'collaboration_interest')
+        ->where('data', 'like', '%"collaboration_request_id":' . $collaborationRequestId . '%')
+        ->first();
+
+        if ($notification) {
+            // Decode existing notification data
+            $notificationData = json_decode($notification->data, true);
+
+            // Update the status field in the notification data
+            $notificationData['collaboration_request_status'] = $data['status'];
+
+            // Save the updated notification data
+            $notification->update([
+                'data' => json_encode($notificationData),
+            ]);
+        }
+
         // Initiate a chat if accepted
         if ($data['status'] == 4) {
             // Check if a chat already exists between the brand and influencer
             $influencerId = $collaborationRequest->influencer->user_id; // Assuming this exists in your relation
             $existingChat = Chat::whereHas('participants', function ($query) use ($brand, $influencerId) {
-                $query->where('user_id', $brand->user_id)
-                    ->orWhere('user_id', $influencerId);
+                $query->whereIn('user_id', [$brand->user_id, $influencerId]);
             })
-            ->has('participants', 2) // Ensures both participants (brand and influencer) exist in the chat
-            ->first();
+            ->get()
+            ->filter(function ($chat) use ($brand, $influencerId) {
+                $participantIds = $chat->participants->pluck('user_id')->toArray();
+                return in_array($brand->user_id, $participantIds) && in_array($influencerId, $participantIds);
+            })->first();
+
 
             if (!$existingChat) {
                 // Create a new chat
@@ -416,6 +487,38 @@ class CollaborationController extends Controller
                     'user_id' => $influencerId, // Influencer
                 ]);
             }
+
+            // Send notification to the influencer about the acceptance
+            $notificationService = new NotificationService();
+            $notificationService->createNotification(
+                $influencerId,
+                'collaboration_acceptance', // Notification type
+                [
+                    'message' => "Your request to collaborate on '{$collaboration->name}' has been accepted by {$brand->name}.",
+                    'collaboration_id' => $collaboration->id,
+                    'collaboration_request_id' => $collaborationRequest->id,
+                    'collaboration_image' => $collaboration->image,
+                    'brand_id' => $collaboration->brand->id,
+                ]
+            );
+
+            // Prepare push notification data for the influencer
+            $pushNotificationData = [
+                'title' => "Collaboration Acceptance",
+                'body' => "Your request to collaborate on " . strtoupper($collaboration->name) . " has been accepted by " . strtoupper($brand->name) . ".",
+                'image' => $collaboration->image,
+                'data' => [
+                    'collaboration_id' => $collaboration->id,
+                    'collaboration_request_id' => $collaborationRequest->id,
+                    'influencer_id' => $influencerId,
+                    'status' => 4, // Accepted status
+                    'message' => "Your request to collaborate on " . strtoupper($collaboration->name) . " has been accepted.",
+                ]
+            ];
+
+            // Send push notification to the influencer
+            $fcmTokens = $collaborationRequest->influencer->user->fcmTokens->pluck('fcm_token')->toArray();
+            $pushNotificationService->sendPushNotification($fcmTokens, $pushNotificationData);
         }
 
         // Return a response based on the new status
@@ -424,7 +527,47 @@ class CollaborationController extends Controller
         return response()->json(['success' => true, 'message' => $message]);
     }
 
-    // Delete a collaboration
+    // Fetch interested influencers for all collaborations by a brand(brand notification)
+    public function fetchInterestedInfluencersForAllCollaborations()
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user = Auth::user();
+
+        if ($user->role !== 'brand') {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        // Fetch the brand information based on the authenticated user
+        $brand = Brand::where('user_id', $user->id)->first();
+
+        if (!$brand) {
+            return response()->json(['success' => false, 'message' => 'Brand not found']);
+        }
+
+        // Fetch all collaborations created by the brand
+        $collaborations = Collaboration::where('brand_id', $brand->id)->get();
+
+        if ($collaborations->isEmpty()) {
+            return response()->json(['success' => true, 'message' => 'No collaborations found']);
+        }
+
+        // Fetch interested influencers for all collaborations
+        $interestedInfluencers = CollaborationRequest::with('influencer', 'collaboration')
+            ->whereIn('collaboration_id', $collaborations->pluck('id')) // Get collaboration IDs
+            ->where('status', 2) // 2 = interested
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        if ($interestedInfluencers->isEmpty()) {
+            return response()->json(['success' => true, 'message' => 'No interested influencers found']);
+        }
+
+        return response()->json(['success' => true, 'interested_influencers' => $interestedInfluencers]);
+    }
+
     public function deleteCollaboration($id)
     {
         // Check if the user is authenticated
@@ -480,14 +623,14 @@ class CollaborationController extends Controller
             // For influencers, only fetch collaborations that have been accepted by the brand and have not ended
             $collaborations = Collaboration::whereHas('collaborationRequests', function ($query) use ($influencerId) {
                 $query->where('influencer_id', $influencerId)
-                    ->where('status', 4)
+                    ->where('status', 5) // '5' is completed by brand
                     ->orderBy('created_at', 'desc');
             })
-                // ->where(function ($query) {
-                //     $query->whereNull('end_date')
-                //         ->orWhere('end_date', '>=', now());
-                // })
-                ->get();
+            // ->where(function ($query) {
+            //     $query->whereNull('end_date')
+            //         ->orWhere('end_date', '>=', now()); // Only fetch collaborations that have not ended
+            // })
+            ->get();
         } else {
             return response()->json(['error' => 'Invalid user role'], 403);
         }
@@ -500,7 +643,7 @@ class CollaborationController extends Controller
 
             // If the user is an influencer, add influencer details
             $acceptedRequest = $collaboration->collaborationRequests()
-                ->where('status', 4)
+                ->where('status', 4) // '4' means accepted
                 ->with('influencer')
                 ->first();
 
@@ -527,7 +670,7 @@ class CollaborationController extends Controller
     }
 
     // Complete a collaboration
-    public function completeCollaboration($collaborationRequestId)
+    public function completeCollaboration($collaborationRequestId, PushNotificationService $pushNotificationService)
     {
         if (!Auth::check()) {
             return response()->json(['success' => false, 'error' => 'Unauthenticated'], 401);
@@ -585,7 +728,222 @@ class CollaborationController extends Controller
         // Update the status to 'completed' (status 5)
         $collaborationRequest->update(['status' => 5]);
 
+        // Update the status of the collaboration itself
+        $collaboration->update(['status' => '5']);
+
+        $notification = Notification::where('user_id', $brand->user_id)
+        // ->where('type', 'collaboration_interest')
+        ->where('data', 'like', '%"collaboration_request_id":' . $collaborationRequestId . '%')
+        ->first();
+
+        if ($notification) {
+            // Decode existing notification data
+            $notificationData = json_decode($notification->data, true);
+
+            // Update the status field in the notification data
+            $notificationData['collaboration_request_status'] = 5;
+
+            // Save the updated notification data
+            $notification->update([
+                'data' => json_encode($notificationData),
+            ]);
+        }
+
+        $notificationService = new NotificationService();
+        $notificationService->createNotification(
+            $collaborationRequest->influencer->user_id,
+            'collaboration_completed', // Notification type
+            [
+                'message' => "{$brand->name} has recognized that you have successfully completed the collaboration '{$collaboration->name}'.",
+                'collaboration_id' => $collaboration->id,
+                'collaboration_request_id' => $collaborationRequest->id,
+                'collaboration_image' => $collaboration->image,
+                'brand_id' => $collaboration->brand->id,
+            ]
+        );
+
+        // Prepare push notification data for the influencer
+        $pushNotificationData = [
+            'title' => "Collaboration Completed",
+            'body' => strtoupper($brand->name) . " has recognized that you have successfully completed the collaboration " . strtoupper($collaboration->name) . ".",
+            'image' => $collaboration->image,
+            'data' => [
+                'collaboration_id' => $collaboration->id,
+                'collaboration_request_id' => $collaborationRequest->id,
+                'influencer_id' => $collaborationRequest->influencer->user_id,
+                'status' => 5, // Completed status
+                'message' => strtoupper("{$brand->name} has recognized that you have successfully completed the collaboration {$collaboration->name}."),
+            ]
+        ];
+
+        // Send push notification to the influencer
+        $fcmTokens = $collaborationRequest->influencer->user->fcmTokens->pluck('fcm_token')->toArray();
+        $pushNotificationService->sendPushNotification($fcmTokens, $pushNotificationData);
+
         return response()->json(['success' => true, 'message' => 'Collaboration request completed.']);
+    }
+
+    //Explore
+    public function getAllCollaborations(Request $request)
+    {
+        if (!Auth::check()) {
+            return response()->json(['success' => false, 'error' => 'Unauthenticated'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Get the offset and limit from the request, defaulting to 0 and 10 respectively
+        $offset = $request->input('offset', 0);
+        $limit = $request->input('limit', 10);
+
+        // Fetch collaborations with status 'interested', 'accepted', or 'completed'
+        $excludedStatuses = [2, 4, 5];
+        $excludedCollaborationIds = CollaborationRequest::where('influencer_id', $user->influencer->id)
+            ->whereIn('status', $excludedStatuses)
+            ->pluck('collaboration_id')
+            ->toArray();
+
+        // Step 2: Get categories of collaborations the user is interested in
+        $interestedCategories = Collaboration::whereIn('id', $excludedCollaborationIds)
+            ->pluck('category')
+            ->toArray();
+
+        // Flatten and remove duplicate categories
+        $interestedCategories = array_unique(array_merge(...array_map('json_decode', $interestedCategories)));
+
+        // Step 3: Fetch collaborations from interested categories, excluding already excluded collaborations
+        $collaborationsFromInterestedCategories = Collaboration::where(function ($query) use ($interestedCategories) {
+            foreach ($interestedCategories as $categoryId) {
+                $query->orWhereRaw('JSON_CONTAINS(category, ?)', [json_encode($categoryId)]);
+            }
+        })
+            ->where('status', '!=', 7) // Exclude closed collaborations
+            ->whereNotIn('id', $excludedCollaborationIds) // Exclude interested, accepted, and completed collaborations
+            ->where(function ($query) {
+                $query->whereNull('end_date') // Include collaborations with no end_date
+                      ->orWhere('end_date', '>=', now()); // Include only active collaborations
+            })
+            ->orderBy('created_at', 'desc')
+            ->skip($offset)
+            ->take($limit)
+            ->get();
+
+        // Step 4: Fetch additional collaborations if needed to fill the limit
+        $totalFetched = $collaborationsFromInterestedCategories->count();
+        $remainingLimit = $limit - $totalFetched;
+
+        $otherCollaborations = [];
+        if ($remainingLimit > 0) {
+            $otherCollaborations = Collaboration::whereNotIn('id', $excludedCollaborationIds) // Exclude interested, accepted, and completed collaborations
+                ->where('status', '!=', 7) // Exclude closed collaborations
+                ->where(function ($query) {
+                    $query->whereNull('end_date') // Include collaborations with no end_date
+                          ->orWhere('end_date', '>=', now()); // Include only active collaborations
+                })
+                ->whereNotIn('id', $collaborationsFromInterestedCategories->pluck('id'))
+                ->orderBy('created_at', 'desc')
+                ->skip($offset + $totalFetched)
+                ->take($remainingLimit)
+                ->get();
+        }
+
+        // Combine both collections
+        $collaborations = $collaborationsFromInterestedCategories->merge($otherCollaborations);
+
+        // Check if there are more collaborations
+        $totalCollaborations = Collaboration::whereNotIn('id', $excludedCollaborationIds)
+            ->where('status', '!=', 7) // Exclude closed collaborations
+            ->count();
+        $hasMore = ($offset + $limit) < $totalCollaborations;
+
+        return response()->json([
+            'success' => true,
+            'collaborations' => $collaborations,
+            'has_more' => $hasMore,
+            'next_offset' => $offset + $limit
+        ]);
+    }
+
+    // Get collaboration details
+    public function getCollaborationDetails($collaborationId)
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Find the collaboration by ID
+        $collaboration = Collaboration::find($collaborationId);
+
+        // Check if the collaboration exists
+        if (!$collaboration) {
+            return response()->json(['error' => 'Collaboration not found'], 404);
+        }
+
+        // Get the current date and time
+        $currentDate = now();
+        $endDate = $collaboration->end_date;
+
+        // Determine if the end_date has passed
+        $hasEnded = $endDate && $currentDate->greaterThanOrEqualTo($endDate);
+
+        // Check if the authenticated user is an influencer and has expressed interest
+        $hasExpressedInterest = false;
+        if ($user->role === 'influencer') {
+            $hasExpressedInterest = $collaboration->collaborationRequests()
+                ->where('influencer_id', $user->influencer->id)
+                ->where('status', 2)
+                ->exists();
+        }
+
+        $brand = $collaboration->brand;
+
+        // Return the collaboration details with the 'has_ended' flag and 'has_expressed_interest'
+        return response()->json([
+            'success' => true,
+            'collaboration' => $collaboration->toArray() + [
+                // 'brand_name' => $brand->name ?? '',
+                'has_ended' => $hasEnded,
+                'has_expressed_interest' => $hasExpressedInterest
+            ]
+        ]);
+    }
+
+    public function closeCollaboration($collaborationId)
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user = Auth::user();
+
+        if ($user->role !== 'brand') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Find the collaboration by ID
+        $collaboration = Collaboration::find($collaborationId);
+
+        // If collaboration not found, return an error message
+        if (!$collaboration) {
+            return response()->json(['message' => 'Collaboration not found'], 404);
+        }
+
+        if($collaboration->brand->id !== $user->brand->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if($collaboration->status === 7) {
+            return response()->json(['message' => 'Collaboration already closed'], 400);
+        }
+
+        // Update the status to 7 (closed)
+        $collaboration->status = 7;
+        $collaboration->save();
+
+        // Return a success message
+        return response()->json(['success' => true,'message' => 'Collaboration closed successfully']);
     }
 
 }

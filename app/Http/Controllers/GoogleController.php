@@ -3,7 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use Google\Client as GoogleClient;
+use App\Models\Brand;
+use App\Models\Influencer;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -73,11 +74,10 @@ class GoogleController extends Controller
     {
         // Validate the request
         $validator = Validator::make($request->all(), [
-            'idToken' => 'required|string',
-            'role' => 'required|in:brand,influencer',
+            'accessToken' => 'required|string',
+            'role' => 'nullable|in:brand,influencer',
         ]);
 
-        // Return validation errors if validation fails
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
@@ -89,59 +89,73 @@ class GoogleController extends Controller
         }
 
         try {
-            $idToken = $request->idToken;
+            $accessToken = $request->accessToken;
 
-            // Initialize the Google Client and set client ID
-            $client = new GoogleClient();
-            $client->setClientId(env('GOOGLE_CLIENT_ID')); // Use your Google Client ID
+            // Call Google's UserInfo API
+            $client = new \GuzzleHttp\Client();
+            $response = $client->get('https://www.googleapis.com/oauth2/v1/userinfo', [
+                'headers' => [
+                    'Authorization' => "Bearer $accessToken",
+                ],
+            ]);
 
-            // Verify the ID token with Google
-            $payload = $client->verifyIdToken($idToken);
+            $userInfo = json_decode($response->getBody(), true);
 
-            // If payload is null, the token verification failed
-            if (!$payload) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Invalid Google token.',
-                    'code' => 401,
-                    'timestamp' => now()->toISOString(),
-                ], 401);
-            }
+            // Extract user details
+            $googleId = $userInfo['id'];
+            $email = $userInfo['email'];
+            $name = $userInfo['name'];
+            $emailVerifiedAt = now();
 
-            // Extract user details from the payload
-            $googleId = $payload['sub']; // Google's unique user ID
-            $email = $payload['email'];
-            $name = $payload['name'];
-
-            // Check if user exists, or create a new one
+            // Check if user exists in the database
             $user = User::where('email', $email)->first();
 
             if (!$user) {
+                // Create a new user
                 $user = User::create([
                     'name' => $name,
                     'email' => $email,
                     'google_id' => $googleId,
-                    'password' => null, // No password for Google login
-                    'role' => $request->role,
+                    'password' => null,
+                    'role' => $request->role ?? null,
+                    'email_verified_at' => $emailVerifiedAt,
                 ]);
+
+                // Create associated Brand or Influencer based on role
+                if ($request->role === 'brand') {
+                    Brand::create([
+                        'user_id' => $user->id,
+                        'name' => $user->name,
+                    ]);
+                } elseif ($request->role === 'influencer') {
+                    Influencer::create([
+                        'user_id' => $user->id,
+                        'name' => $user->name,
+                    ]);
+                }
+
+            } else {
+                // Update Google ID if not already present
+                if (is_null($user->google_id)) {
+                    $user->update([
+                        'google_id' => $googleId,
+                        // 'email_verified_at' => $emailVerifiedAt,
+                    ]);
+                }
             }
 
-            // Generate access token for the user
+            // Generate a personal access token for the user
             $token = $user->createToken('auth_token')->plainTextToken;
 
-            // Return successful response
             return response()->json([
                 'status' => 'success',
                 'message' => 'Login successful.',
                 'access_token' => $token,
                 'role' => $user->role,
-                'profile_updated' => $user->profile_updated,
-                'code' => 200,
-                'timestamp' => now()->toISOString(),
+                'profile_updated' => (int) ($user->profile_updated ?? 0), // Ensure 0 or 1 is returned
             ], 200);
 
         } catch (\Exception $e) {
-            // Handle any exceptions that occur during the process
             return response()->json([
                 'status' => 'error',
                 'message' => 'An error occurred during login.',
@@ -152,7 +166,6 @@ class GoogleController extends Controller
                     'line' => $e->getLine(),
                 ],
                 'code' => 500,
-                'timestamp' => now()->toISOString(),
             ], 500);
         }
     }

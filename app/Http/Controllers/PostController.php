@@ -5,22 +5,27 @@ namespace App\Http\Controllers;
 use App\Models\Post;
 use App\Models\PostLike;
 use Illuminate\Http\Request;
+use App\Models\Notification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Services\NotificationService;
 use Illuminate\Support\Facades\Validator;
+use App\Services\PushNotificationService;
+use Illuminate\Support\Facades\Log;
 
 class PostController extends Controller
 {
     // Create a new post
     public function store(Request $request)
     {
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image|mimes:jpeg,png,jpg,heic,gif,webp,svg|max:2048',
+            'description' => 'nullable|string',
+        ]);
+
         if (!Auth::check()) {
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
-
-        $validator = Validator::make($request->all(), [
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp,svg|max:2048',
-            'description' => 'nullable|string',
-        ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
@@ -47,7 +52,6 @@ class PostController extends Controller
         ]);
     }
 
-    // Get posts by user
     public function getPostsByUser($user_id)
     {
         if (!Auth::check()) {
@@ -56,9 +60,10 @@ class PostController extends Controller
 
         $authUser = Auth::user(); // Get the authenticated user
 
-        // Fetch posts for the specified user and eager load the likes relationship
+        // Fetch posts for the specified user, order by 'created_at' descending, and eager load the likes relationship
         $posts = Post::where('user_id', $user_id)
             ->with('likes')
+            ->orderBy('created_at', 'desc')  // Fetch latest posts first
             ->get();
 
         if ($posts->isEmpty()) {
@@ -89,7 +94,7 @@ class PostController extends Controller
     }
 
     // Like a post
-    public function likePost($postId)
+    public function likePost($postId, NotificationService $notificationService, PushNotificationService $pushNotificationService)
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Unauthenticated'], 401);
@@ -98,58 +103,111 @@ class PostController extends Controller
         $user = Auth::user();
         $post = Post::find($postId);
 
-        if(!$post) {
+        if (!$post) {
             return response()->json(['error' => 'Post not found'], 404);
         }
 
-        // Check if the user already liked the post
         $existingLike = PostLike::where('user_id', $user->id)
                                 ->where('post_id', $postId)
                                 ->first();
 
-        if ($existingLike) {
-            if ($existingLike->status == 1) {
-                // If already liked, change status to 0 (unlike)
-                $existingLike->update(['status' => 0]);
+        $isLiked = $existingLike && $existingLike->status === 1;
 
-                // Decrease the likes count in the posts table
+        if ($existingLike) {
+            if ($isLiked) {
+                $existingLike->update(['status' => 0]);
                 $post->decrement('likes_count');
 
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Post unliked successfully',
-                ]);
+                Notification::where('type', 'post_like')
+                    ->where('data->user_id', $user->id)
+                    ->where('data->post_id', $postId)
+                    ->delete();
+
+                return response()->json(['success' => true, 'message' => 'Post unliked successfully']);
             } else {
-                // If already unliked, change status back to 1 (re-like)
                 $existingLike->update(['status' => 1]);
-
-                // Increase the likes count in the posts table
                 $post->increment('likes_count');
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Post liked again',
-                ]);
             }
         } else {
-            // If no record exists, create a new like
             PostLike::create([
                 'user_id' => $user->id,
                 'post_id' => $postId,
                 'status' => 1,
             ]);
-
-            // Increase the likes count in the posts table
             $post->increment('likes_count');
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Post liked successfully',
-            ]);
         }
+
+        if ($post->user_id !== $user->id) {
+            $userRole = $user->role;
+            $userId = null;
+            $roleId = null;
+
+            if ($userRole === 'influencer' && $user->influencer) {
+                $userId = $user->influencer->id;
+                $roleId = 'influencer_id';
+            } elseif ($userRole === 'brand' && $user->brand) {
+                $userId = $user->brand->id;
+                $roleId = 'brand_id';
+            }
+
+            $notificationData = [
+                'message' => (($user->influencer->name ?? $user->brand->name) . " liked your post."),
+                'user_profile_photo' => ($user->influencer->profile_photo ?? $user->brand->profile_photo) ?? null,
+                'user_role' => $user->role,
+                $roleId => $userId,
+                'user_id' => $user->id,
+                'post_id' => $postId,
+                'post_image' => $post->image,
+            ];
+
+            $notificationService->createNotification(
+                $post->user_id,
+                'post_like',
+                $notificationData
+            );
+
+            $fcmTokens = $post->user->fcmTokens->pluck('fcm_token')->toArray();
+
+            if (!empty($fcmTokens)) {
+                // Define the prefix for images
+                $imageBaseUrl = 'https://apptest.zenerom.com/storage/'; // Replace with your actual image base URL
+
+                $pushNotificationData = [
+                    'title' => 'New Like',
+                    'body' => $notificationData['message'],
+                    'image' => $imageBaseUrl . $notificationData['post_image'],
+                    'click_action' => url('/post/' . $postId),
+                    'data' => array_merge($notificationData, [
+                        'icon' => $imageBaseUrl . $notificationData['user_profile_photo'], // Move 'icon' to the 'data' section
+                    ]),
+                ];
+
+                if (is_null($fcmTokens) || is_null($pushNotificationData)) {
+                    Log::error('Push Notification Data is null', [
+                        'fcmTokens' => $fcmTokens,
+                        'pushNotificationData' => $pushNotificationData
+                    ]);
+                } else {
+                    Log::info('Push Notification Data', [
+                        'fcmTokens' => $fcmTokens,
+                        'pushNotificationData' => $pushNotificationData
+                    ]);
+                }
+
+                $response = $pushNotificationService->sendPushNotification($fcmTokens, $pushNotificationData);
+                // Log the response, ensuring it's in array format
+                Log::info('FCM Response: ', ['response' => $response]);
+            } else {
+                Log::error('No FCM tokens found for the user.');
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $isLiked ? 'Post liked again' : 'Post liked successfully',
+        ]);
     }
 
-    // Get likes for a post
     public function getLikes($postId)
     {
         $post = Post::find($postId);

@@ -10,11 +10,11 @@ use App\Models\Influencer;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use App\Mail\PasswordResetOtpMail;
+use App\Mail\MailVerificationOtpMail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\MailVerificationOtpMail;
 use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
@@ -22,11 +22,12 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => 'nullable|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
             'role' => 'required|in:brand,influencer',
             'dob' => 'nullable|date_format:d-m-Y',
+            'fcm_token' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -38,10 +39,25 @@ class AuthController extends Controller
 
         $user = User::create($data);
 
+        // Store or update FCM token if provided in the request
+        if ($request->has('fcm_token')) {
+            $fcmToken = $request->fcm_token;
+
+            // Check if the FCM token already exists for the user
+            $existingToken = $user->fcmTokens()->where('fcm_token', $fcmToken)->first();
+
+            if (!$existingToken) {
+                // Create a new FCM token entry
+                $user->fcmTokens()->create([
+                    'fcm_token' => $fcmToken,
+                ]);
+            }
+        }
+
         // Generate a 6-digit numeric OTP
-        $otp = rand(100000, 999999);
+        $otp = rand(1000, 9999);
         // Set OTP expiration time (e.g., 10 minutes from now)
-        $otpExpiresAt = Carbon::now()->addMinutes(10);
+        $otpExpiresAt = Carbon::now()->addMinutes(1);
 
         // Save OTP and its expiration time to the user
         $user->otp = $otp;
@@ -75,7 +91,8 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'user_id' => 'required|exists:users,id',
-            'otp' => 'required|digits:6',
+            'otp' => 'required|digits:4',
+            'fcm_token' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -97,6 +114,21 @@ class AuthController extends Controller
         // Ensure we are comparing with a valid Carbon instance
         if (Carbon::now()->greaterThan($user->otp_expires_at)) {
             return response()->json(['error' => 'OTP has expired. Please request a new one.'], 400);
+        }
+
+        // Store or update FCM token if provided in the request
+        if ($request->has('fcm_token')) {
+            $fcmToken = $request->fcm_token;
+
+            // Check if the FCM token already exists for the user
+            $existingToken = $user->fcmTokens()->where('fcm_token', $fcmToken)->first();
+
+            if (!$existingToken) {
+                // Create a new FCM token entry
+                $user->fcmTokens()->create([
+                    'fcm_token' => $fcmToken,
+                ]);
+            }
         }
 
         // Mark user as verified
@@ -138,7 +170,7 @@ class AuthController extends Controller
         }
 
         // Generate a new 6-digit OTP
-        $otp = rand(100000, 999999);
+        $otp = rand(1000, 9999);
 
         // Calculate OTP expiration time (e.g., 10 minutes from now)
         $otpExpiresAt = Carbon::now()->addMinutes(10);
@@ -154,11 +186,13 @@ class AuthController extends Controller
         return response()->json(['success' => 'OTP resent to your email. Please check your inbox.']);
     }
 
+
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'email' => 'required|string|email|max:255',
             'password' => 'required|string|min:8',
+            'fcm_token' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -171,13 +205,29 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->firstOrFail();
 
+        // Store or update FCM token if provided in the request
+        if ($request->has('fcm_token')) {
+            $fcmToken = $request->fcm_token;
+
+            // Check if the FCM token already exists for the user
+            $existingToken = $user->fcmTokens()->where('fcm_token', $fcmToken)->first();
+
+            if (!$existingToken) {
+                // Create a new FCM token entry
+                $user->fcmTokens()->create([
+                    'fcm_token' => $fcmToken,
+                ]);
+            }
+        }
+
         // Check if the user's email is verified
         if (!$user->email_verified_at) {
+
             // Generate a new 6-digit OTP
-            $otp = random_int(100000, 999999);
+            $otp = rand(1000, 9999);
 
             // Set OTP expiration time (e.g., 10 minutes from now)
-            $otpExpiresAt = Carbon::now()->addMinutes(10);
+            $otpExpiresAt = Carbon::now()->addMinutes(1);
 
             // Update the user's OTP and expiration time in the database
             $user->otp = $otp;
@@ -199,6 +249,7 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'User logged in successfully',
             'access_token' => $token,
+            'id' => $user->id,
             'token_type' => 'Bearer',
             'role' => $user->role,
             'profile_updated' => $user->profile_updated,
@@ -238,10 +289,10 @@ class AuthController extends Controller
         }
 
         // Generate a 6-digit numeric OTP
-        $otp = rand(100000, 999999);
+        $otp = rand(1000, 9999);
 
         // Calculate OTP expiration time (e.g., 10 minutes from now)
-        $otpExpiresAt = Carbon::now()->addMinutes(10);
+        $otpExpiresAt = Carbon::now()->addMinutes(1);
 
         // Update the user's OTP and expiration time in the database
         $user->otp = $otp;
@@ -253,6 +304,37 @@ class AuthController extends Controller
 
         return response()->json(['success' => 'OTP sent to your email. Please check your inbox.']);
     }
+
+    // public function resetPassword(Request $request)
+    // {
+    //     // Validate the request
+    //     $request->validate([
+    //         'email' => 'required|email|exists:users,email',
+    //         'otp' => 'required|string',
+    //         'password' => 'required|string|min:8|confirmed',
+    //     ]);
+
+    //     // Find the user by email
+    //     $user = User::where('email', $request->email)->first();
+
+    //     // Check if the OTP matches and is not expired
+    //     if ($user->otp !== $request->otp) {
+    //         return response()->json(['error' => 'Invalid OTP provided.'], 400);
+    //     }
+
+    //     if (Carbon::now()->greaterThan($user->otp_expires_at)) {
+    //         return response()->json(['error' => 'OTP has expired. Please request a new one.'], 400);
+    //     }
+
+    //     // Update the user's password
+    //     $user->password = Hash::make($request->password);
+    //     // Clear the OTP and expiration time
+    //     $user->otp = null;
+    //     $user->otp_expires_at = null;
+    //     $user->save();
+
+    //     return response()->json(['success' => 'Password has been reset successfully.']);
+    // }
 
     public function verifyPasswordOtp(Request $request)
     {

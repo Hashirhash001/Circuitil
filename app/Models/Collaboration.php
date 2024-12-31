@@ -12,7 +12,7 @@ class Collaboration extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['brand_id', 'name', 'image', 'description', 'category', 'end_date', 'amount'];
+    protected $fillable = ['brand_id', 'name', 'image', 'description', 'category', 'end_date', 'amount' ,'status'];
 
     public function influencer()
     {

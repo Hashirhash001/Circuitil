@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Influencer;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 use App\Models\Collaboration;
 use Illuminate\Support\Facades\Auth;
@@ -34,10 +35,14 @@ class HomeController extends Controller
         // Search for brands and influencers by name, excluding the current user
         $brands = Brand::where('name', 'LIKE', '%' . $query . '%')
                         ->where('user_id', '!=', $currentUserId)
+                        ->whereNotNull('category')
+                        ->whereNotNull('profile_photo')
                         ->get();
 
         $influencers = Influencer::where('name', 'LIKE', '%' . $query . '%')
                                     ->where('user_id', '!=', $currentUserId)
+                                    ->whereNotNull('category')
+                                    ->whereNotNull('profile_photo')
                                     ->get();
 
         // Map the results into a single array, preserving the 'type' key
@@ -232,9 +237,21 @@ class HomeController extends Controller
             ], 404);
         }
 
+        // Map through collaborations and add the 'has_expressed_interest' flag
+        $collaborationsWithInterestFlag = $collaborations->map(function ($collaboration) use ($authUser) {
+            $hasExpressedInterest = $collaboration->collaborationRequests()
+                ->where('influencer_id', $authUser->influencer->id)
+                ->exists();
+
+            return $collaboration->toArray() + [
+                'has_expressed_interest' => $hasExpressedInterest,
+                'brand_name' => $collaboration->brand->name ?? 'Unknown Brand',
+            ];
+        });
+
         return response()->json([
             'success' => true,
-            'collaborations' => $collaborations,
+            'collaborations' => $collaborationsWithInterestFlag,
         ]);
     }
 
@@ -245,17 +262,24 @@ class HomeController extends Controller
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
-        // Get the top brands based on the number of collaborations
-        $topBrands = Brand::withCount('collaborations') // Count the number of collaborations
-            ->orderByDesc('collaborations_count') // Sort brands by the number of collaborations
-            ->limit(10) // Limit the number of top brands to 10
+        // Fetch top brands based on completed collaboration requests
+        $topBrands = Brand::with(['user']) // Load the user relationship
+            ->withCount(['collaborations as completed_collaboration_requests_count' => function ($query) {
+                $query->whereHas('collaborationRequests', function ($requestQuery) {
+                    $requestQuery->where('status', 5); // Filter collaboration requests with status = 5
+                });
+            }])
+            ->having('completed_collaboration_requests_count', '>', 0) // Only brands with at least one completed request
+            ->orderByDesc('completed_collaboration_requests_count') // Sort by the count of completed requests
+            ->limit(10) // Limit the results to the top 10 brands
             ->get()
             ->map(function ($brand) {
                 return [
                     'id' => $brand->id,
+                    'user_id' => $brand->user->id, // Access user ID through the relationship
                     'name' => $brand->name,
                     'profile_photo' => $brand->profile_photo,
-                    'collaborations_count' => $brand->collaborations_count,
+                    'completed_collaboration_requests_count' => $brand->completed_collaboration_requests_count,
                 ];
             });
 
@@ -334,5 +358,40 @@ class HomeController extends Controller
             'influencers' => $influencers
         ]);
     }
+
+    // Get user notifications
+    public function getUserNotifications(Request $request)
+    {
+        // Check if the user is authenticated
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Fetch the notifications for the authenticated user
+        $notifications = Notification::where('user_id', $user->id)
+            ->orderBy('created_at', 'desc') // Order by the most recent notifications first
+            ->get();
+
+        // Format the notifications if needed
+        $formattedNotifications = $notifications->map(function ($notification) {
+            // Add any necessary formatting or additional fields
+            return [
+                'id' => $notification->id,
+                'message' => $notification->message,
+                'type' => $notification->type,
+                'created_at' => $notification->created_at->toDateTimeString(), // Format the created_at timestamp
+                'is_read' => $notification->is_read, // Assuming there's an 'is_read' field
+                'data' => json_decode($notification->data) // Any extra data stored in JSON format
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'notifications' => $formattedNotifications
+        ]);
+    }
+
 
 }

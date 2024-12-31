@@ -9,6 +9,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\GoogleController;
+use App\Http\Controllers\AppVersionController;
 use App\Http\Controllers\InfluencerController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\CollaborationController;
@@ -34,13 +35,7 @@ Route::post('password/send-otp', [AuthController::class, 'sendOtpForResetPasswor
 Route::post('password/verify-password-otp', [AuthController::class, 'verifyPasswordOtp']);
 Route::post('password/reset', [AuthController::class, 'resetPassword']);
 
-Route::post('auth/google/register', [GoogleController::class, 'googleLogin']);
-
-Route::get('/run-artisan-command', function () {
-    Artisan::call('storage:link');
-
-    return response()->json(['message' => 'Command executed successfully']);
-});
+Route::post('auth/google', [GoogleController::class, 'googleLogin']);
 
 Route::middleware('web')->group(function () {
     //google authentication
@@ -83,7 +78,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Get influencers by category
     Route::post('/influencers/category', [HomeController::class, 'getInfluencersByCategory']);
     //get all influencers
-    Route::get('/influencers/all', [HomeController::class, 'AllInfluencers']);
+    Route::get('/influencers/fetch/all', [HomeController::class, 'AllInfluencers']);
+    // explore influencers
+    Route::get('/explore-influencers', [InfluencerController::class, 'exploreInfluencers']);
+    // all the interested collaborations
+    Route::get('/interested-collaborations/{influencerId}', [InfluencerController::class, 'fetchInterestedCollaborations']);
 
     // Brand routes
     Route::get('/brand', [BrandController::class, 'index']);
@@ -94,7 +93,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Get brands by category
     Route::post('/brands/category', [HomeController::class, 'getBrandsByCategory']);
     //get all brands
-    Route::get('/brands/all', [HomeController::class, 'AllBrands']);
+    Route::get('/brands/fetch/all', [HomeController::class, 'AllBrands']);
+    // all the invited influencers
+    Route::get('/invited-influencers/{brandId}', [BrandController::class, 'fetchInvitedInfluencers']);
 
     // Post routes
     Route::post('/posts/store', [PostController::class, 'store']);
@@ -105,6 +106,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Routes for brands to create and manage collaborations
     Route::post('collaboration/create', [CollaborationController::class, 'createCollaboration']);
+    // get collaboration details
+    Route::get('collaborations/{collaborationId}/details', [CollaborationController::class, 'getCollaborationDetails']);
     // fetch influencers interested in a collaboration
     Route::get('collaborations/{collaborationId}/interested-influencers', [CollaborationController::class, 'fetchInterestedInfluencers']);
     // fetch influencers interested in all collaborations
@@ -115,8 +118,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('collaborations/{collaborationId}/delete', [CollaborationController::class, 'deleteCollaboration']);
     // get all collaborations for a brand
     Route::get('/collaborations', [BrandController::class, 'getCollaborations']);
+    // get all collaborations for a brand with a flag for already invited influencer
+    Route::get('/collaborations/invited/{influencerId}', [BrandController::class, 'getCollaborationsWithInvitedFlag']);
     // invite an influencer for a collaboration
     Route::post('/collaborations/invite', [CollaborationRequestController::class, 'inviteInfluencerForCollaboration']);
+    // accept a collaboration invitation
+    Route::post('/collaborations/{collaborationRequestId}/accept-invitation', [CollaborationRequestController::class, 'acceptCollaborationInvitation']);
     // complete a collaboration
     Route::post('/collaborations/{collaborationId}/complete', [CollaborationController::class, 'completeCollaboration']);
     // mark an influencer as interested in a collaboration
@@ -129,13 +136,22 @@ Route::middleware('auth:sanctum')->group(function () {
     // get collaborations by user
     Route::get('/collaborations/{userId}', [CollaborationController::class, 'getCollaborationsByUserId']);
 
+    //get all collaborations
+    Route::get('/collaborations/fetch/all', [CollaborationController::class, 'getAllCollaborations']);
+
+    // close a collaboration
+    Route::post('/collaborations/{id}/close', [CollaborationController::class, 'closeCollaboration']);
 
     // Chat routes
     Route::prefix('chats')->group(function () {
         // Send a new message
-        Route::post('/message/send/{recipientId}', [ChatController::class, 'sendMessageBetweenUsers']);
+        // Route::post('/message/send/{recipientId}', [ChatController::class, 'sendMessageBetweenUsers']);
 
-        Route::post('/{chatId}/message', [ChatController::class, 'sendMessage']);
+        // send message using chat id
+        Route::post('/{chatId}/message/{messageId?}', [ChatController::class, 'sendMessage']);
+
+        //fetch all the chats for a user
+        Route::get('/fetch-all', [ChatController::class, 'getUserChats']);
 
         // Reply to a message
         Route::post('/{chatId}/message/{messageId}', [ChatController::class, 'sendMessage']);
@@ -150,11 +166,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{chatId}/message/{messageId}/delete', [ChatController::class, 'deleteMessage']);
     });
 
+    Route::prefix('app-version')->group(function () {
+        // Fetch previous versions
+        Route::get('previous/{platform}', [AppVersionController::class, 'fetchPreviousVersions']);
+        // Fetch current version
+        Route::get('current/{platform}', [AppVersionController::class, 'fetchCurrentVersion']);
+        // Create a new version
+        Route::post('/create', [AppVersionController::class, 'createAppVersion']);
+    });
+
+    // fetch all the notifications for a user
+    Route::get('/notifications', [HomeController::class, 'getUserNotifications']);
 });
 
-Route::get('/create-symlink', function () {
-    symlink('/home/apptest.zenerom.com/circuitil/storage/app/public', '/home/apptest.zenerom.com/public_html/storage');
-    return response()->json(['message' => 'Symlink created successfully']);
-});
-
-Route::get('/encrypt-messages', [ChatController::class, 'encryptMessagesField']);
+// Route::get('/sync-likes-count', [PostController::class, 'syncLikesCount']);
+// Route::get('/encrypt-messages', [ChatController::class, 'encryptMessages']);
