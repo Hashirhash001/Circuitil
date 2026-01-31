@@ -105,7 +105,7 @@ class CollaborationController extends Controller
                         $influencer->user_id,
                         'collaboration_suggestion',
                         [
-                            'message' => "You may be interested in the collaboration '{$collaboration->name}', check it out.",
+                            'message' => "You may be interested in the collaboration " . strtoupper($collaboration->name) . ", check it out.",
                             'collaboration_id' => $collaboration->id,
                             'brand_id' => $collaboration->brand->id,
                             'collaboration_request_id' => $collaborationRequest->id,
@@ -284,7 +284,7 @@ class CollaborationController extends Controller
                     $collaboration->brand->user_id, // The brand owner's user ID
                     'collaboration_interest', // Notification type
                     [
-                        'message' => "{$influencer->name} has expressed interest for your '{$collaboration->name}' collaboration.",
+                        'message' => strtoupper($influencer->name). " has expressed interest for your " .strtoupper($collaboration->name). " collaboration.",
                         'collaboration_id' => $collaboration->id,
                         'collaboration_image' => $collaboration->image,
                         'collaboration_request_id' => $collaborationRequest->id,
@@ -494,7 +494,7 @@ class CollaborationController extends Controller
                 $influencerId,
                 'collaboration_acceptance', // Notification type
                 [
-                    'message' => "Your request to collaborate on '{$collaboration->name}' has been accepted by {$brand->name}.",
+                    'message' => "Your request to collaborate on " . strtoupper($collaboration->name) . " has been accepted by " . strtoupper($brand->name) . ".",
                     'collaboration_id' => $collaboration->id,
                     'collaboration_request_id' => $collaborationRequest->id,
                     'collaboration_image' => $collaboration->image,
@@ -593,6 +593,9 @@ class CollaborationController extends Controller
         // Delete any related collaboration requests
         CollaborationRequest::where('collaboration_id', $collaboration->id)->delete();
 
+        // Delete notifications related to this collaboration
+        Notification::whereJsonContains('data->collaboration_id', $collaboration->id)->delete();
+
         // Delete the collaboration
         $collaboration->delete();
 
@@ -612,38 +615,42 @@ class CollaborationController extends Controller
             return response()->json(['error' => 'User not found'], 404);
         }
 
-        // Determine if the user is a brand or an influencer
+        // Initialize variables
+        $collaborations = collect();
+
         if ($user->role === 'brand') {
             // For brands, fetch all collaborations
-            $collaborations = $user->brand->collaborations;
+            $collaborations = $user->brand->collaborations ?? collect();
         } elseif ($user->role === 'influencer') {
-            // Get the influencer's ID only if the user is an influencer
-            $influencerId = $user->influencer->id;
+            // Validate influencer profile
+            $influencer = $user->influencer;
+            if (!$influencer) {
+                return response()->json(['error' => 'Influencer profile not found for this user'], 404);
+            }
 
-            // For influencers, only fetch collaborations that have been accepted by the brand and have not ended
-            $collaborations = Collaboration::whereHas('collaborationRequests', function ($query) use ($influencerId) {
-                $query->where('influencer_id', $influencerId)
-                    ->where('status', 5) // '5' is completed by brand
-                    ->orderBy('created_at', 'desc');
-            })
-            // ->where(function ($query) {
-            //     $query->whereNull('end_date')
-            //         ->orWhere('end_date', '>=', now()); // Only fetch collaborations that have not ended
-            // })
-            ->get();
+            // Fetch collaborations that have been accepted or completed
+            $collaborations = Collaboration::whereHas('collaborationRequests', function ($query) use ($influencer) {
+                $query->where('influencer_id', $influencer->id)
+                      ->whereIn('status', [4, 5]); // Accepted or Completed
+            })->get();
         } else {
             return response()->json(['error' => 'Invalid user role'], 403);
         }
 
-        // Map through collaborations and add status and influencer details (if needed)
+        // Map through collaborations and add additional details
         $collaborationsWithDetails = $collaborations->map(function ($collaboration) {
             $currentDate = now();
             $endDate = $collaboration->end_date;
             $hasEnded = $endDate && $currentDate->greaterThanOrEqualTo($endDate);
 
-            // If the user is an influencer, add influencer details
+            // Check if this specific collaboration has completed requests
+            $hasCompletedCollaboration = $collaboration->collaborationRequests()
+                ->where('status', 5) // Completed
+                ->exists();
+
+            // Retrieve the first accepted collaboration request
             $acceptedRequest = $collaboration->collaborationRequests()
-                ->where('status', 4) // '4' means accepted
+                ->where('status', 4) // Accepted
                 ->with('influencer')
                 ->first();
 
@@ -651,6 +658,7 @@ class CollaborationController extends Controller
 
             return $collaboration->toArray() + [
                 'has_ended' => $hasEnded,
+                'has_completed_collaboration' => $hasCompletedCollaboration,
                 'influencer' => $influencer ? [
                     'id' => $influencer->id,
                     'name' => $influencer->name,
@@ -658,8 +666,8 @@ class CollaborationController extends Controller
                     'about' => $influencer->about,
                     'profile_photo' => $influencer->profile_photo,
                     'collab_value' => $influencer->collab_value,
-                    'social_media_links' => json_decode($influencer->social_media_links)
-                ] : null
+                    'social_media_links' => json_decode($influencer->social_media_links, true),
+                ] : null,
             ];
         });
 
@@ -754,7 +762,7 @@ class CollaborationController extends Controller
             $collaborationRequest->influencer->user_id,
             'collaboration_completed', // Notification type
             [
-                'message' => "{$brand->name} has recognized that you have successfully completed the collaboration '{$collaboration->name}'.",
+                'message' => strtoupper($brand->name) . " has recognized that you have successfully completed the collaboration " . strtoupper($collaboration->name) . ".",
                 'collaboration_id' => $collaboration->id,
                 'collaboration_request_id' => $collaborationRequest->id,
                 'collaboration_image' => $collaboration->image,
@@ -897,6 +905,11 @@ class CollaborationController extends Controller
                 ->exists();
         }
 
+        // Check if there are any accepted influencers
+        $hasCompletedInfluencers = $collaboration->collaborationRequests()
+        ->where('status', 5) // Assuming status 5 means "completed"
+        ->exists(); // Check if any accepted influencers exist
+
         $brand = $collaboration->brand;
 
         // Return the collaboration details with the 'has_ended' flag and 'has_expressed_interest'
@@ -905,7 +918,8 @@ class CollaborationController extends Controller
             'collaboration' => $collaboration->toArray() + [
                 // 'brand_name' => $brand->name ?? '',
                 'has_ended' => $hasEnded,
-                'has_expressed_interest' => $hasExpressedInterest
+                'has_expressed_interest' => $hasExpressedInterest,
+                'completed_influencers' => $hasCompletedInfluencers,
             ]
         ]);
     }
@@ -936,6 +950,17 @@ class CollaborationController extends Controller
 
         if($collaboration->status === 7) {
             return response()->json(['message' => 'Collaboration already closed'], 400);
+        }
+
+        // Check if there are any accepted influencers
+        $hasAcceptedInfluencers = $collaboration->collaborationRequests()
+            ->where('status', 5) // Assuming status 5 means "completed"
+            ->exists();
+
+        if (!$hasAcceptedInfluencers) {
+            return response()->json([
+                'message' => 'Collaboration cannot be closed because no influencers have been accepted.'
+            ], 400);
         }
 
         // Update the status to 7 (closed)

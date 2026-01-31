@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\BlockUser;
 use App\Models\Influencer;
 use App\Models\Notification;
 use Illuminate\Http\Request;
@@ -32,15 +33,25 @@ class HomeController extends Controller
         $query = $request->input('query'); // The search query (name)
         $currentUserId = Auth::id(); // Get the current authenticated user's ID
 
+        // Get blocked user IDs
+        $blockedUserIds = BlockUser::where('blocker_id', $currentUserId)
+        ->orWhere('blocked_id', $currentUserId)
+        ->pluck('blocked_id')
+        ->merge(BlockUser::where('blocked_id', $currentUserId)->pluck('blocker_id'))
+        ->unique()
+        ->toArray();
+
         // Search for brands and influencers by name, excluding the current user
         $brands = Brand::where('name', 'LIKE', '%' . $query . '%')
                         ->where('user_id', '!=', $currentUserId)
+                        ->whereNotIn('user_id', $blockedUserIds)
                         ->whereNotNull('category')
                         ->whereNotNull('profile_photo')
                         ->get();
 
         $influencers = Influencer::where('name', 'LIKE', '%' . $query . '%')
                                     ->where('user_id', '!=', $currentUserId)
+                                    ->whereNotIn('user_id', $blockedUserIds)
                                     ->whereNotNull('category')
                                     ->whereNotNull('profile_photo')
                                     ->get();
@@ -255,20 +266,28 @@ class HomeController extends Controller
         ]);
     }
 
-
     public function getTopBrands()
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
-        // Fetch top brands based on completed collaboration requests
+        // Fetch top brands based on completed collaboration requests and count distinct influencers
         $topBrands = Brand::with(['user']) // Load the user relationship
-            ->withCount(['collaborations as completed_collaboration_requests_count' => function ($query) {
-                $query->whereHas('collaborationRequests', function ($requestQuery) {
-                    $requestQuery->where('status', 5); // Filter collaboration requests with status = 5
-                });
-            }])
+            ->withCount([
+                // Count completed collaborations
+                'collaborations as completed_collaboration_requests_count' => function ($query) {
+                    $query->whereHas('collaborationRequests', function ($requestQuery) {
+                        $requestQuery->where('status', 5); // Filter collaboration requests with status = 5
+                    });
+                },
+                // Count distinct influencers who completed collaborations
+                'collaborations as distinct_influencers_count' => function ($query) {
+                    $query->whereHas('collaborationRequests', function ($requestQuery) {
+                        $requestQuery->where('status', 5); // Filter collaboration requests with status = 5
+                    })->distinct('influencer_id'); // Ensure unique influencers are counted
+                },
+            ])
             ->having('completed_collaboration_requests_count', '>', 0) // Only brands with at least one completed request
             ->orderByDesc('completed_collaboration_requests_count') // Sort by the count of completed requests
             ->limit(10) // Limit the results to the top 10 brands
@@ -280,6 +299,7 @@ class HomeController extends Controller
                     'name' => $brand->name,
                     'profile_photo' => $brand->profile_photo,
                     'completed_collaboration_requests_count' => $brand->completed_collaboration_requests_count,
+                    'distinct_influencers_count' => $brand->distinct_influencers_count, // Add the new count field
                 ];
             });
 

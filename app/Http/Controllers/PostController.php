@@ -245,6 +245,11 @@ class PostController extends Controller
             ], 404);
         }
 
+        // Remove like notifications related to the post
+        Notification::where('type', 'post_like')
+        ->whereRaw("JSON_EXTRACT(data, '$.post_id') = ?", [$post->id])
+        ->delete();
+
         $post->delete();
 
         return response()->json([

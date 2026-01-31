@@ -6,6 +6,7 @@ use App\Models\Chat;
 use App\Models\Post;
 use App\Models\User;
 use App\Models\Brand;
+use App\Models\BlockUser;
 use App\Models\Influencer;
 use Illuminate\Http\Request;
 use App\Models\Collaboration;
@@ -256,6 +257,14 @@ class InfluencerController extends Controller
         $offset = $request->input('offset', 0);
         $limit = $request->input('limit', 10);
 
+        // Get blocked user IDs
+        $blockedUserIds = BlockUser::where('blocker_id', $user->id)
+        ->orWhere('blocked_id', $user->id)
+        ->pluck('blocked_id')
+        ->merge(BlockUser::where('blocked_id', $user->id)->pluck('blocker_id'))
+        ->unique()
+        ->toArray();
+
         // Step 1: Fetch collaboration IDs created by the brand
         $brandCollaborationIds = Collaboration::where('brand_id', $user->brand->id)
             ->pluck('id')
@@ -270,18 +279,19 @@ class InfluencerController extends Controller
 
         // Step 3: Fetch categories from both the Brand and the Collaborations it created
         $collaborationCategories = Collaboration::where('brand_id', $user->brand->id)
-            ->pluck('category')
-            ->toArray();
+        ->pluck('category')
+        ->toArray();
 
         $brandCategories = Brand::where('id', $user->brand->id)
-            ->pluck('category')
-            ->toArray();
+        ->pluck('category')
+        ->toArray();
+
+        // Ensure categories are always arrays before merging
+        $collaborationCategories = array_filter(array_map(fn($c) => json_decode($c, true) ?? [], $collaborationCategories));
+        $brandCategories = array_filter(array_map(fn($c) => json_decode($c, true) ?? [], $brandCategories));
 
         // Merge and flatten both category sources, removing duplicates
-        $allCategories = array_unique(array_merge(
-            array_merge(...array_map('json_decode', $collaborationCategories)),
-            array_merge(...array_map('json_decode', $brandCategories))
-        ));
+        $allCategories = array_unique(array_merge(...$collaborationCategories, ...$brandCategories));
 
         // Step 4: Fetch influencers from the brand's collaboration categories, excluding excluded influencers
         $influencersFromCategories = Influencer::where(function ($query) use ($allCategories) {
@@ -289,7 +299,7 @@ class InfluencerController extends Controller
                 $query->orWhereRaw('JSON_CONTAINS(category, ?)', [json_encode($categoryId)]);
             }
         })
-            ->whereNotIn('id', $excludedInfluencerIds)
+            ->whereNotIn('id', array_merge($excludedInfluencerIds, $blockedUserIds))
             ->orderBy('created_at', 'desc')
             ->skip($offset)
             ->take($limit)
@@ -301,7 +311,7 @@ class InfluencerController extends Controller
 
         $otherInfluencers = [];
         if ($remainingLimit > 0) {
-            $otherInfluencers = Influencer::whereNotIn('id', $excludedInfluencerIds)
+            $otherInfluencers = Influencer::whereNotIn('id', array_merge($excludedInfluencerIds, $blockedUserIds))
                 ->whereNotIn('id', $influencersFromCategories->pluck('id'))
                 ->orderBy('created_at', 'desc')
                 ->skip($offset + $totalFetched)
@@ -313,7 +323,7 @@ class InfluencerController extends Controller
         $influencers = $influencersFromCategories->merge($otherInfluencers);
 
         // Check if there are more influencers
-        $totalInfluencers = Influencer::whereNotIn('id', $excludedInfluencerIds)->count();
+        $totalInfluencers = Influencer::whereNotIn('id', array_merge($excludedInfluencerIds, $blockedUserIds))->count();
         $hasMore = ($offset + $limit) < $totalInfluencers;
 
         return response()->json([

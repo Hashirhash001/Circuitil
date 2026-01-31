@@ -87,7 +87,7 @@ class CollaborationRequestController extends Controller
             $influencer->user_id, // The influencer's user ID
             'collaboration_invitation', // Notification type
             [
-                'message' => "{$brand->name} has invited you to collaborate on {$collaboration->name}.",
+                'message' => strtoupper($brand->name) . " has invited you to collaborate on " . strtoupper($collaboration->name) . ".",
                 'collaboration_id' => $collaboration->id,
                 'collaboration_request_id' => $newCollaborationRequest->id,
                 'collaboration_request_status' => $newCollaborationRequest->status,

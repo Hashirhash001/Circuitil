@@ -12,6 +12,7 @@ use App\Http\Controllers\GoogleController;
 use App\Http\Controllers\AppVersionController;
 use App\Http\Controllers\InfluencerController;
 use App\Http\Controllers\SocialAuthController;
+use App\Http\Controllers\UserActionController;
 use App\Http\Controllers\CollaborationController;
 use App\Http\Controllers\CollaborationRequestController;
 
@@ -177,6 +178,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // fetch all the notifications for a user
     Route::get('/notifications', [HomeController::class, 'getUserNotifications']);
+
+    // Delete Account
+    Route::post('/delete-account', [AuthController::class, 'sendAccountDeletionOtp']);
+    Route::post('/verify-account-deletion', [AuthController::class, 'verifyAccountDeletionOtp']);
+
+    // block and unblock a user
+    Route::post('/block-user', [UserActionController::class, 'blockUser']);
+    Route::post('/unblock-user', [UserActionController::class, 'unblockUser']);
+    // get blocked users
+    Route::get('/blocked-users', [UserActionController::class, 'getBlockedUsers']);
+
+    // report a user/post
+    Route::post('/report', [UserActionController::class, 'report']);
+
 });
 
 // Route::get('/sync-likes-count', [PostController::class, 'syncLikesCount']);

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use Exception;
+use Carbon\Carbon;
 use App\Models\Chat;
 use App\Models\User;
 use App\Models\Brand;
 use App\Models\FcmToken;
+use App\Models\BlockUser;
 use App\Models\Influencer;
 use App\Events\MessageSent;
 use App\Models\ChatMessage;
@@ -21,81 +23,6 @@ use Illuminate\Support\Facades\Validator;
 
 class ChatController extends Controller
 {
-    // send a message in a chat
-    // public function sendMessageBetweenUsers(Request $request, $recipientId)
-    // {
-    //     // Check if the user is authenticated
-    //     if (!Auth::check()) {
-    //         return response()->json(['success' => false, 'error' => 'Unauthenticated'], 401);
-    //     }
-
-    //     $user = Auth::user();
-
-    //     // Ensure the recipient is not the authenticated user
-    //     if ($user->id == $recipientId) {
-    //         return response()->json(['success' => false, 'error' => 'You cannot send a message to yourself'], 400);
-    //     }
-
-    //     // Validate the request
-    //     $validator = Validator::make($request->all(), [
-    //         'message' => 'required|string|max:500',
-    //         'attachment_url' => 'nullable|url|max:255', // Optional attachment (URL)
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json(['success' => false, 'error' => $validator->errors()], 422);
-    //     }
-
-    //     $data = $validator->validated();
-
-    //     // Ensure the recipient exists
-    //     $recipient = User::find($recipientId);
-    //     if (!$recipient) {
-    //         return response()->json(['success' => false, 'error' => 'Recipient not found'], 404);
-    //     }
-
-    //     // Check if a chat already exists between the sender and recipient
-    //     $chat = Chat::whereHas('participants', function ($query) use ($user) {
-    //         $query->where('user_id', $user->id);
-    //     })->whereHas('participants', function ($query) use ($recipient) {
-    //         $query->where('user_id', $recipient->id);
-    //     })->first();
-
-    //     // If no chat exists, create one
-    //     if (!$chat) {
-    //         $chat = Chat::create(['created_by' => $user->id]);
-
-    //         // Add both the sender and recipient as participants
-    //         ChatParticipant::create(['chat_id' => $chat->id, 'user_id' => $user->id]);
-    //         ChatParticipant::create(['chat_id' => $chat->id, 'user_id' => $recipient->id]);
-    //     }
-
-    //     // Encrypt the message before saving
-    //     $encryptedMessage = encrypt($data['message']);
-
-    //     // Send the message
-    //     $message = ChatMessage::create([
-    //         'chat_id' => $chat->id,
-    //         'sender_id' => $user->id,
-    //         // 'message' => $data['message'],
-    //         'message' => $encryptedMessage,
-    //         'attachment_url' => $data['attachment_url'] ?? null,
-    //         'status' => 'sent',
-    //     ]);
-
-    //     // Attempt to broadcast the message
-    //     try {
-    //         broadcast(new MessageSent($message))->toOthers();
-    //         $broadcasted = true;
-    //     } catch (\Exception $e) {
-    //         // Handle broadcast error (log or take necessary action)
-    //         Log::error('Broadcast failed: ' . $e->getMessage());
-    //         $broadcasted = false;
-    //     }
-
-    //     return response()->json(['success' => true, 'message' => 'Message sent', 'data' => $message]);
-    // }
-
     protected $pushNotificationService;
 
     public function __construct(PushNotificationService $pushNotificationService)
@@ -112,7 +39,7 @@ class ChatController extends Controller
 
         $user = Auth::user();
 
-        // Determine the role (e.g., 'influencer' or 'brand') and fetch name and profile photo
+        // Determine sender details based on role
         if ($user->role === 'influencer' && $user->influencer) {
             $senderName = $user->influencer->name;
             $profilePhoto = $user->influencer->profile_photo;
@@ -123,6 +50,7 @@ class ChatController extends Controller
             return response()->json(['success' => false, 'error' => 'User role or profile information not found'], 404);
         }
 
+        // Validate request input
         $validator = Validator::make($request->all(), [
             'message' => 'required|string|max:500',
             'attachment_url' => 'nullable|url|max:255',
@@ -134,6 +62,7 @@ class ChatController extends Controller
 
         $data = $validator->validated();
 
+        // Check if user is a participant in the chat
         $isParticipant = ChatParticipant::where('chat_id', $chatId)
             ->where('user_id', $user->id)
             ->exists();
@@ -142,6 +71,7 @@ class ChatController extends Controller
             return response()->json(['success' => false, 'error' => 'You are not a participant in this chat'], 403);
         }
 
+        // Check if replying to a message
         $replyToMessageId = null;
         if ($messageId) {
             $originalMessage = ChatMessage::where('id', $messageId)->where('chat_id', $chatId)->first();
@@ -151,8 +81,10 @@ class ChatController extends Controller
             $replyToMessageId = $messageId;
         }
 
+        // Encrypt the message
         $encryptedMessage = encrypt($data['message']);
 
+        // Create the chat message
         $message = ChatMessage::create([
             'chat_id' => $chatId,
             'sender_id' => $user->id,
@@ -160,34 +92,71 @@ class ChatController extends Controller
             'attachment_url' => $data['attachment_url'] ?? null,
             'status' => 'sent',
             'reply_to_message_id' => $replyToMessageId,
+            'created_at' => Carbon::now('Asia/Kolkata'),
+            'updated_at' => Carbon::now('Asia/Kolkata'),
         ]);
 
+        // Format message response
+        $broadcastMessage = [
+            'id' => (int) $message->id,
+            'chat_id' => (int) $message->chat_id,
+            'sender_id' => (int) $user->id,
+            'sender_name' => $senderName,
+            'role' => $user->role,
+            'profile_photo' => $profilePhoto,
+            'message' => $data['message'],
+            'status' => $message->status,
+            'reply_to_message_id' => $replyToMessageId ? (int) $replyToMessageId : null,
+            'created_at' => $message->created_at->toDateTimeString(),
+            'read_receipts' => [], // Placeholder for read receipts
+        ];
+
+        // Broadcast the message to chat participants
+        broadcast(new MessageSent($broadcastMessage));
+
+        // Get all chat participants except the sender
         $recipients = ChatParticipant::where('chat_id', $chatId)
             ->where('user_id', '!=', $user->id)
             ->pluck('user_id')
             ->toArray();
 
-        $fcmTokens = FcmToken::whereIn('user_id', $recipients)->pluck('fcm_token')->toArray();
+        // Exclude blocked users from receiving notifications
+        $blockedUsers = BlockUser::where('blocked_by', $user->id)
+            ->orWhere('blocked_user', $user->id)
+            ->pluck('blocked_user')
+            ->toArray();
 
-        if (!empty($fcmTokens)) {
-            $notificationData = [
-                'title' => $senderName . ' sent you a message',
-                'body' => decrypt($encryptedMessage),
-                'icon' => $profilePhoto,
-                'click_action' => url("/chat/{$chatId}/messages/{$message->id}"),
-                'data' => [
-                    'message' => decrypt($encryptedMessage),
-                    'sender_name' => $senderName,
-                    'sender_profile_photo' => $profilePhoto,
-                    'chat_id' => $chatId,
-                    'message_id' => $message->id,
-                ]
-            ];
+        $allowedRecipients = array_diff($recipients, $blockedUsers);
 
-            $this->pushNotificationService->sendPushNotification($fcmTokens, $notificationData);
-            Log::info('Push Notification sent successfully', ['fcmTokens' => $fcmTokens, 'notificationData' => $notificationData]);
+        if (!empty($allowedRecipients)) {
+            $fcmTokens = FcmToken::whereIn('user_id', $allowedRecipients)->pluck('fcm_token')->toArray();
+
+            if (!empty($fcmTokens)) {
+                // Image base URL for profile photos
+                $imageBaseUrl = 'https://apptest.zenerom.com/storage/';
+
+                $notificationData = [
+                    'title' => $senderName . ' sent a message',
+                    'body' => decrypt($encryptedMessage),
+                    'icon' => $imageBaseUrl . $profilePhoto,
+                    'click_action' => url("/chat/{$chatId}/messages/{$message->id}"),
+                    'data' => [
+                        'message' => decrypt($encryptedMessage),
+                        'sender_name' => $senderName,
+                        'sender_profile_photo' => $profilePhoto,
+                        'chat_id' => $chatId,
+                        'message_id' => $message->id,
+                    ]
+                ];
+
+                // Send push notification
+                $this->pushNotificationService->sendPushNotification($fcmTokens, $notificationData);
+                Log::info('Push Notification sent successfully', ['fcmTokens' => $fcmTokens, 'notificationData' => $notificationData]);
+            } else {
+                Log::warning('No FCM tokens found for the recipients');
+            }
         } else {
-            Log::warning('No FCM tokens found for the recipients');
+            Log::info('All recipients are blocked, no notifications sent.');
         }
 
         return response()->json(['success' => true, 'message' => 'Message sent', 'data' => $message]);
@@ -254,9 +223,9 @@ class ChatController extends Controller
                 'sender_id' => $sender->id,
                 'sender_name' => $sender->role === 'influencer' ? $sender->influencer->name ?? null : $sender->brand->name ?? null,
                 'role' => $sender->role,
-                'id' => $sender->role === 'influencer'
-                    ? $sender->influencer->id ?? null
-                    : $sender->brand->id ?? null, // Add only influencer_id or brand_id
+                // 'id' => $sender->role === 'influencer'
+                //     ? $sender->influencer->id ?? null
+                //     : $sender->brand->id ?? null, // Add only influencer_id or brand_id
                 'message' => $message->message,
                 'status' => $message->status,
                 'reply_to_message_id' => $message->reply_to_message_id,
@@ -372,12 +341,23 @@ class ChatController extends Controller
             ]);
         }
 
-        // Fetch chats with participants and last message, excluding chats with no participants
+        // Get blocked user IDs
+        $blockedUserIds = BlockUser::where('blocker_id', $user->id)
+            ->orWhere('blocked_id', $user->id)
+            ->pluck('blocked_id')
+            ->merge(BlockUser::where('blocked_id', $user->id)->pluck('blocker_id'))
+            ->unique()
+            ->toArray();
+
+        // Fetch chats with participants and last message, excluding blocked users
         $chats = Chat::whereIn('id', $chatIds)
-            ->whereHas('participants') // Ensure only chats with participants are included
+            ->whereHas('participants.user', function ($query) use ($blockedUserIds, $user) {
+                $query->whereNotIn('id', array_merge([$user->id], $blockedUserIds));
+            })
             ->with([
-                'participants.user' => function ($query) use ($user) {
+                'participants.user' => function ($query) use ($user, $blockedUserIds) {
                     $query->where('id', '!=', $user->id) // Exclude the authenticated user
+                        ->whereNotIn('id', $blockedUserIds) // Exclude blocked users
                         ->select('id', 'name', 'email', 'role'); // Include role
                 },
                 'lastMessage' => function ($query) {
@@ -386,16 +366,14 @@ class ChatController extends Controller
             ])
             ->get();
 
-            // dd($chats);
-
         // Format the response
-        $formattedChats = $chats->map(function ($chat) {
-            // Filter out chats with no participants
-            $participants = $chat->participants->map(function ($participant) {
+        $formattedChats = $chats->map(function ($chat) use ($user, $blockedUserIds) {
+            // Filter out blocked participants
+            $participants = $chat->participants->map(function ($participant) use ($blockedUserIds) {
                 $user = $participant->user;
 
-                // Handle null users
-                if (!$user) {
+                // Handle null users or blocked users
+                if (!$user || in_array($user->id, $blockedUserIds)) {
                     return null;
                 }
 
@@ -420,12 +398,19 @@ class ChatController extends Controller
                 return null;
             }
 
-            // $lastMessage = $chat->lastMessage;
-
+            // Fetch last message
             $lastMessage = DB::table('chat_messages')
                 ->where('chat_id', $chat->id)
                 ->orderBy('created_at', 'desc')
                 ->first();
+
+            // Calculate unread messages for the authenticated user
+            $unreadCount = ChatMessage::where('chat_id', $chat->id)
+                ->where('sender_id', '!=', $user->id) // Messages not sent by the authenticated user
+                ->whereDoesntHave('readReceipts', function ($query) use ($user) {
+                    $query->where('reader_id', $user->id);
+                })
+                ->count();
 
             return [
                 'id' => $chat->id,
@@ -440,6 +425,7 @@ class ChatController extends Controller
                         'created_at' => $lastMessage->created_at,
                     ]
                     : null,
+                'unread_count' => $unreadCount,
             ];
         })->filter(); // Remove null chats (empty participants)
 
@@ -449,5 +435,4 @@ class ChatController extends Controller
             'data' => $formattedChats,
         ]);
     }
-
 }

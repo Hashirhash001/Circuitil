@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Post;
 use App\Models\Brand;
 use App\Models\FcmToken;
 use App\Models\Influencer;
@@ -58,6 +59,11 @@ class User extends Authenticatable
     public function fcmTokens()
     {
         return $this->hasMany(FcmToken::class);
+    }
+
+    public function posts()
+    {
+        return $this->hasMany(Post::class);
     }
 
 }

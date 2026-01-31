@@ -9,12 +9,14 @@ use App\Models\Brand;
 use App\Models\Influencer;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use App\Mail\AccountDeletionMail;
 use App\Mail\PasswordResetOtpMail;
-use App\Mail\MailVerificationOtpMail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use App\Mail\MailVerificationOtpMail;
 use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
@@ -23,7 +25,15 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'nullable|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'email' => [
+                'required',
+                'string',
+                'email',
+                'max:255',
+                Rule::unique('users')->where(function ($query) {
+                    $query->whereNull('deleted_at'); // Exclude soft-deleted records
+                }),
+            ],
             'password' => 'required|string|min:8',
             'role' => 'required|in:brand,influencer',
             'dob' => 'nullable|date_format:d-m-Y',
@@ -57,7 +67,7 @@ class AuthController extends Controller
         // Generate a 6-digit numeric OTP
         $otp = rand(1000, 9999);
         // Set OTP expiration time (e.g., 10 minutes from now)
-        $otpExpiresAt = Carbon::now()->addMinutes(1);
+        $otpExpiresAt = Carbon::now()->addMinutes(10);
 
         // Save OTP and its expiration time to the user
         $user->otp = $otp;
@@ -186,7 +196,6 @@ class AuthController extends Controller
         return response()->json(['success' => 'OTP resent to your email. Please check your inbox.']);
     }
 
-
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -199,11 +208,23 @@ class AuthController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+
+        $user = User::where('email', $request->email)->firstOrFail();
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        // Check if the user's password is null
+        if (is_null($user->password)) {
+            return response()->json([
+                'message' => 'This account is registered via Google authentication. Please log in using Google.',
+            ], 403);
+        }
+
         if (!Auth::attempt($request->only('email', 'password'))) {
             return response()->json(['message' => 'Invalid login details'], 401);
         }
-
-        $user = User::where('email', $request->email)->firstOrFail();
 
         // Store or update FCM token if provided in the request
         if ($request->has('fcm_token')) {
@@ -227,7 +248,7 @@ class AuthController extends Controller
             $otp = rand(1000, 9999);
 
             // Set OTP expiration time (e.g., 10 minutes from now)
-            $otpExpiresAt = Carbon::now()->addMinutes(1);
+            $otpExpiresAt = Carbon::now()->addMinutes(10);
 
             // Update the user's OTP and expiration time in the database
             $user->otp = $otp;
@@ -256,7 +277,7 @@ class AuthController extends Controller
         ]);
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
         if (!Auth::check()) {
             return response()->json(['message' => 'Not authenticated'], 401);
@@ -265,15 +286,24 @@ class AuthController extends Controller
         $user = Auth::user();
         $user->currentAccessToken()->delete();
 
+        // Remove the FCM token from the user
+        if ($request->has('fcm_token')) {
+            $user->fcmTokens()->where('fcm_token', $request->fcm_token)->delete();
+        }
+
         return response()->json(['message' => 'Logged out successfully']);
     }
 
     public function sendOtpForResetPassword(Request $request)
     {
         // Validate the request
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'email' => 'required|email|exists:users,email',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
 
         // Retrieve the user
         $user = User::where('email', $request->email)->first();
@@ -281,6 +311,13 @@ class AuthController extends Controller
         // Check if user is found
         if (!$user) {
             return response()->json(['error' => 'This email address is not registered with us.'], 404);
+        }
+
+        // Check if the user was created via Google authentication
+        if (is_null($user->password)) {
+            return response()->json([
+                'error' => 'This account was created using Google authentication. Use Google to log in or set a password first.',
+            ], 403);
         }
 
         // Check if the OTP is still valid
@@ -292,7 +329,7 @@ class AuthController extends Controller
         $otp = rand(1000, 9999);
 
         // Calculate OTP expiration time (e.g., 10 minutes from now)
-        $otpExpiresAt = Carbon::now()->addMinutes(1);
+        $otpExpiresAt = Carbon::now()->addMinutes(10);
 
         // Update the user's OTP and expiration time in the database
         $user->otp = $otp;
@@ -370,6 +407,13 @@ class AuthController extends Controller
         // Find the user by email
         $user = User::where('email', $request->email)->first();
 
+        // Check if the user was created via Google authentication
+        if (is_null($user->password)) {
+            return response()->json([
+                'error' => 'This account was created using Google authentication. Use Google to log in or set a password first.',
+            ], 403);
+        }
+
         // Ensure OTP has already been verified
         if ($user->otp == null || $user->otp_expires_at == null) {
             return response()->json(['error' => 'OTP verification is required before resetting the password.'], 400);
@@ -384,4 +428,76 @@ class AuthController extends Controller
         return response()->json(['success' => 'Password has been reset successfully.']);
     }
 
+    public function sendAccountDeletionOtp(Request $request)
+    {
+        $user = Auth::user(); // Get the authenticated user
+
+        if (!$user) {
+            return response()->json(['error' => 'User not authenticated.'], 401);
+        }
+
+        // Generate a new 6-digit OTP
+        $otp = rand(1000, 9999);
+
+        // Set OTP expiration time (e.g., 10 minutes from now)
+        $otpExpiresAt = Carbon::now()->addMinutes(10);
+
+        // Update the user's OTP and expiration time in the database
+        $user->otp = $otp;
+        $user->otp_expires_at = $otpExpiresAt;
+        $user->save();
+
+        // Send email with OTP using a Mailable
+        Mail::to($user->email)->send(new AccountDeletionMail($otp));
+
+        return response()->json(['success' => true, 'message' => 'OTP sent to your email. Please check your inbox.']);
+
+    }
+
+    public function verifyAccountDeletionOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'otp' => 'required|digits:4',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $user = Auth::user(); // Get the authenticated user
+
+        if (!$user) {
+            return response()->json(['error' => 'User not authenticated.'], 401);
+        }
+
+        // Check if OTP matches and is not expired
+        if ($user->otp !== $request->otp) {
+            return response()->json(['error' => 'Invalid OTP.'], 400);
+        }
+
+        if (Carbon::now()->greaterThan($user->otp_expires_at)) {
+            return response()->json(['error' => 'OTP has expired. Please request a new one.'], 400);
+        }
+
+        // Remove the FCM token from the user
+        if ($request->has('fcm_token')) {
+            $user->fcmTokens()->where('fcm_token', $request->fcm_token)->delete();
+        }
+
+        // Delete the user's account and related data
+        $user->delete();
+        $user->posts()->delete();
+
+        if($user->role == 'influencer') {
+            $user->influencer->delete();
+            $user->influencer->collaborationRequests()->delete();
+        }
+
+        if($user->role == 'brand') {
+            $user->brand->delete();
+            $user->brand->collaborations()->delete();
+        }
+
+        return response()->json(['success' => true, 'message' => 'Account deleted successfully.']);
+    }
 }

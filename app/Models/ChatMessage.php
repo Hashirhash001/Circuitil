@@ -13,7 +13,7 @@ class ChatMessage extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['chat_id', 'sender_id', 'message', 'status', 'attachment_url', 'reply_to_message_id'];
+    protected $fillable = ['chat_id', 'sender_id', 'message', 'status', 'attachment_url', 'reply_to_message_id', 'created_at', 'updated_at'];
 
     public function chat()
     {
@@ -31,8 +31,8 @@ class ChatMessage extends Model
     }
 
     // Accessor to automatically decrypt the message when fetching
-    // public function getMessageAttribute($value)
-    // {
-    //     return decrypt($value);
-    // }
+    public function getMessageAttribute($value)
+    {
+        return decrypt($value);
+    }
 }
