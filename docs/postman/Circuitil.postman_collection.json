@@ -262,7 +262,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n    \"accessToken\" : \"ya29.a0AeDClZCPMTi0n0OmtSXJPPtf17NU0Wuyu6_sv0ixzoRI8IFruCscDfK0gXIF4E-xI4q9wsC-Iggc7Uh7xC8hHl6QamuIJVmIhkZONJfvEYHG6cmU98t9LlKAhtEtXp_PLN-tIj1N7OP6J1VMK2WC4KAuJG9aBvZtCqDfte8NIwaCgYKAcASARESFQHGX2MiqpUneZbjTDY3cGqb8AojCA0177\",\r\n    \"role\" : \"influencer\"\r\n}",
+                  "raw": "{\r\n    \"accessToken\" : \"\",\r\n    \"role\" : \"influencer\"\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
