@@ -22,7 +22,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 71|McOYYgGTxeZjUqa9pamasZaloJC7zY2Bpocbarrz9c9315a2",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -70,7 +70,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 203|cVZ50jtnow49wfcJKblfYdJsrhRAO3klKzlXMPwsef611540",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -109,7 +109,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 36|DSqu7RZUgECKfnVthUQIug2cYktZhQqOucQXlbct92d1726c",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -158,7 +158,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 35|LlyNRkjvt1gusPgnaXOA2kX7d9Xb69yFt5BOvUOS1517f45b",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -203,7 +203,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 2|96uw1Ha3egwFAmMt5sGUetVnaeAVohHaQ9GMt4zM0488201e",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -1529,7 +1529,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 2|96uw1Ha3egwFAmMt5sGUetVnaeAVohHaQ9GMt4zM0488201e",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -1572,7 +1572,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 127|8TLDu4ppqHa7MtHdz5hlnXzJX5A41HP3VzeFbyKp9f411ba9",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -1733,7 +1733,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 127|8TLDu4ppqHa7MtHdz5hlnXzJX5A41HP3VzeFbyKp9f411ba9",
+                "value": "Bearer {{token}}",
                 "type": "text"
               },
               {
@@ -1904,7 +1904,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 516|eitKDwJEQYJ91CarSNhHMd7lw4TbHqVuN0G8e5oO0187b266",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2132,7 +2132,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 184|FfWPbgWESLWgXyVxNZLIImBT3nWEZwPw86wXxhw46a6d5ada",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2287,7 +2287,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 560|RfJ1Et196umdHXDRddtM0Rv3KUr5TWQuAP4V8rd38c5d1eeb",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2326,7 +2326,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 560|RfJ1Et196umdHXDRddtM0Rv3KUr5TWQuAP4V8rd38c5d1eeb",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2484,7 +2484,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 263|60b4tVPpq30JqzNw0ThrrXlpJDElNQ9t57M0giP5c3ae5dcd",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2525,7 +2525,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 139|CzMzwgivhv8M0tfSRybfS9JnR3IxQeNjpfBFeZJE240140f9",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2703,7 +2703,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 263|60b4tVPpq30JqzNw0ThrrXlpJDElNQ9t57M0giP5c3ae5dcd",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2861,7 +2861,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 50|ugvSF7hsGp4mNbZR84pNkPuPBrxa5JMzLbh3ePRHa9cd2e39",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -2903,7 +2903,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 593|6ESoGhL93t8OuyNqWFTDK4TmxhSmnjcswpJwMqWR863c6b98",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3053,7 +3053,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 189|juGIy69un7AsEZhBK7dJ7pvcYPsazmMDCZRpR71pb8c5c000",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3092,7 +3092,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 297|OkxRc5IuShJ7mcOlw4hPQQGGFJzHDAeAMISlFvwAf8fdf436",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3132,7 +3132,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 509|zzXCoentHikkO4ErKChQUzC9foBSYKQeXue2hcPAb8e2cdd5",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3282,7 +3282,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 35|LlyNRkjvt1gusPgnaXOA2kX7d9Xb69yFt5BOvUOS1517f45b",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3320,7 +3320,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 284|cDCgK7nYFWthskkSe9AbNzbHgIBs66BzuZJWi9iL5d6ffd4a",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3473,7 +3473,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 99|hENF3RG6WDpqFQh6g7jAU6zI0dJ2abTAnOqAC7s93a403f5d",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3513,7 +3513,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 269|6bz2DTdwyRA7zqWcpiD7dc8mkZlHDNsmtR0AuGpSdfca4c33",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3668,7 +3668,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 37|PWtMu0t2HrucYIXqfNDoF1ROlypNnzxAEcHYdek55392a28e",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -3828,7 +3828,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 590|hncz1X6xtj4OoVKbHB7K97nB9qkMz24FDTk2KGFN04426b31",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -4079,7 +4079,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 3|QHsMc0KOQJJ3N1Bl1gu8z1uFWdwm3Y0udMMK6ZNw758ae50d",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -4233,7 +4233,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 120|4XwwcEwavRchqe7Xg8rHGbT8QU17GX1p0Gk2LkmUd19950bc",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -4389,7 +4389,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 33|oICM4ygXeAhlAHNwzzVf0ITDf4MQjaTSF0OKyeAQ68ce9b12",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -4538,7 +4538,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 339|YN2PDCUtZM6eTJxVyU0c2pEvlUrsFcMWnF8iSASt9856c8dc",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -4694,7 +4694,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 176|kWZ8qnBL0W0TDMzzp2IcJS0pKNhEgkHChPEQX3bY89f4796e",
+                "value": "Bearer{{token}}",
                 "type": "text"
               }
             ],
@@ -4922,7 +4922,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 145|MG2R4xobAYjSxxG8uRPHylcT2QPBASlPgbWILmOj969f810d",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5076,7 +5076,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 418|O4BdUxPVlXPYE0KJOeWiePT23s0Hfvvk6ob7EGG5c4ca8e6d",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5232,7 +5232,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 300|cWOKt0rLIwA0mGk3AhQNJR5S86sRNcsCOtJDLAl535c9471c",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5381,7 +5381,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 238|VBrmmL6JZNVZOUaEN3wbbV6Eer4EgyXNnYxyLUhYefcc838d",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5535,7 +5535,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 340|iwuF0E81hCCqwMCeyg3vjoGqev2qXdYo5yXAWDVdab7a5e86",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5691,7 +5691,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 300|cWOKt0rLIwA0mGk3AhQNJR5S86sRNcsCOtJDLAl535c9471c",
+                "value": "Bearer{{token}}",
                 "type": "text"
               }
             ],
@@ -5732,7 +5732,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 320|MKQHAhd5sS4FYYztUyCEwS0vCE7vyIbRgnWcKHUp51523a1c",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5887,7 +5887,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 303|xKD4kZY8OLOHc0yI5SuAuG6HgoezrSu768ajGwXrc777d876",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5928,7 +5928,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 346|Yvr7E6ev4Jh2VlAopzT8vWAx2FabxpdR7W7V5Jnb66147312",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -5968,7 +5968,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 303|xKD4kZY8OLOHc0yI5SuAuG6HgoezrSu768ajGwXrc777d876",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -6013,7 +6013,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 445|x6HGAp0dF9FJ8BzPyYEudm01vXzu5rVAxTFJpU6ib67ed925",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -6173,7 +6173,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 240|3rzmnN5zx5dJO2nfcB8yvXx8RlngLVkfN1njxvkmff7dcb76",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -6331,7 +6331,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 613|aasOqpAk6LUiCDtHQiMRdgtmODSBGJGrkeBS8nAI757eee99",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -6633,7 +6633,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 613|aasOqpAk6LUiCDtHQiMRdgtmODSBGJGrkeBS8nAI757eee99",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -6793,7 +6793,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 236|jTY3farpai573w69NHJM49NLKgnHRhNmYLHYugwmd75cd580",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -6922,7 +6922,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 236|jTY3farpai573w69NHJM49NLKgnHRhNmYLHYugwmd75cd580",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -7183,7 +7183,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer 236|jTY3farpai573w69NHJM49NLKgnHRhNmYLHYugwmd75cd580",
+                "value": "Bearer {{token}}",
                 "type": "text"
               }
             ],
@@ -7317,7 +7317,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 236|jTY3farpai573w69NHJM49NLKgnHRhNmYLHYugwmd75cd580",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -7358,7 +7358,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 613|aasOqpAk6LUiCDtHQiMRdgtmODSBGJGrkeBS8nAI757eee99",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -7504,7 +7504,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 120|4XwwcEwavRchqe7Xg8rHGbT8QU17GX1p0Gk2LkmUd19950bc",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -7545,7 +7545,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 169|5yVJuCExkiFvcrviMA5FDHd2L8cJdVbNGhyZoXv6f1caa01f",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -7696,7 +7696,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 120|4XwwcEwavRchqe7Xg8rHGbT8QU17GX1p0Gk2LkmUd19950bc",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -7738,7 +7738,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 690|Fvm4sArha4smwP8XZDREXZpFnhygvELMC5dCKH7Ta158d20d",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -7892,7 +7892,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 134|EO6xwyJL6Cl12VC3Qf9azuIeWgzfb2E6USJRdJHu36cb8c78",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
@@ -8046,7 +8046,7 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer 690|Fvm4sArha4smwP8XZDREXZpFnhygvELMC5dCKH7Ta158d20d",
+            "value": "Bearer {{token}}",
             "type": "text"
           }
         ],
